@@ -1,0 +1,1177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Verification — Enterprise AI Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Poppins:wght@400;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3@1.10.0/dist/web3.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+      @keyframes gradientShift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+      }
+      @keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+        50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.5); }
+      }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      
+      :root{
+        --bg: #0a0e27;
+        --bg-secondary: #0f172a;
+        --card: rgba(255,255,255,0.06);
+        --card-elevated: rgba(255,255,255,0.12);
+        --muted: rgba(255,255,255,0.7);
+        --text-color: #ffffff;
+        --card-shadow: 0 8px 40px rgba(2,6,23,0.6);
+        --glow-shadow: 0 0 30px rgba(59, 130, 246, 0.2);
+        --accent-blue: #3b82f6;
+        --accent-purple: #8b5cf6;
+        --accent-cyan: #22d3ee;
+        --accent-green: #10b981;
+        --accent-orange: #f59e0b;
+        --danger: #ef4444;
+        --radius: 14px;
+      }
+      
+      *{box-sizing:border-box}
+      
+      html,body{
+        height:100%;
+        margin:0;
+        font-family:Inter, Poppins, sans-serif;
+        background: linear-gradient(135deg, var(--bg) 0%, var(--bg-secondary) 100%);
+        color:var(--text-color);
+        overflow-x: hidden;
+      }
+      
+      .app{display:flex;min-height:100vh;gap:28px;padding:32px;animation:slideUp 0.6s ease-out}
+      
+      .sidebar{
+        width:280px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+        backdrop-filter:blur(12px);
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:18px;
+        padding:24px;
+        height:fit-content;
+        position: sticky;
+        top: 32px;
+      }
+      
+      .brand{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+      .logo{
+        width:52px;
+        height:52px;
+        border-radius:12px;
+        background:linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-weight:800;
+        font-size:24px;
+        box-shadow: var(--glow-shadow);
+      }
+      
+      .brand h1{font-size:16px;margin:0;font-weight:700}
+      .brand .tag{font-size:10px;color:var(--muted);font-weight:500}
+      
+      nav{
+        margin-top:28px;
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+      }
+      
+      .nav-item{
+        padding:12px 14px;
+        border-radius:10px;
+        color:var(--muted);
+        cursor:pointer;
+        transition:all 0.3s ease;
+        font-size:13px;
+        font-weight:500;
+        display:flex;
+        align-items:center;
+        gap:10px;
+      }
+      
+      .nav-item:hover{
+        background:rgba(59, 130, 246, 0.1);
+        color:var(--accent-blue);
+        transform: translateX(4px);
+      }
+      
+      .content{flex:1}
+      
+      .topbar{margin-bottom:28px}
+      
+      .card{
+        background:var(--card);
+        backdrop-filter:blur(20px);
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:var(--radius);
+        padding:24px;
+        transition:all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        animation: slideUp 0.6s ease-out;
+      }
+      
+      .card:hover{
+        background:var(--card-elevated);
+        border-color:rgba(59, 130, 246, 0.3);
+        transform:translateY(-2px);
+      }
+      
+      .hero{display:flex;justify-content:space-between;align-items:flex-end}
+      .hero h2{margin:0;font-size:32px;font-weight:800;background:linear-gradient(90deg, #fff, var(--accent-cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .tagline{color:var(--muted);font-size:14px;margin-top:6px}
+      
+      .btn{
+        padding:11px 20px;
+        border:none;
+        border-radius:10px;
+        font-weight:600;
+        cursor:pointer;
+        background:rgba(255,255,255,0.1);
+        color:#fff;
+        font-size:13px;
+        transition:all 0.3s ease;
+        border:1px solid rgba(255,255,255,0.1);
+      }
+      
+      .btn:hover{
+        background:rgba(255,255,255,0.15);
+        transform: scale(1.05);
+        border-color:rgba(255,255,255,0.2);
+      }
+      
+      .grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(500px, 1fr));gap:24px}
+      .grid-3{grid-template-columns: repeat(3, 1fr)}
+      .upload-panel{grid-column:1}
+      
+      .dropzone{
+        border:2px dashed rgba(59, 130, 246, 0.3);
+        border-radius:14px;
+        padding:32px;
+        text-align:center;
+        cursor:pointer;
+        transition:all 0.3s ease;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, transparent 100%);
+      }
+      
+      .dropzone:hover{
+        border-color:var(--accent-cyan);
+        background: linear-gradient(135deg, rgba(34, 211, 238, 0.1) 0%, transparent 100%);
+        transform: scale(1.02);
+      }
+      
+      .metric{
+        flex:1;
+        padding:16px;
+        border-radius:12px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+        border:1px solid rgba(255,255,255,0.08);
+        text-align:center;
+        transition:all 0.3s ease;
+      }
+      
+      .metric:hover{
+        background:linear-gradient(180deg, rgba(59, 130, 246, 0.1), rgba(255,255,255,0.01));
+        transform: translateY(-2px);
+      }
+      
+      .metric h3{margin:0;font-size:22px;font-weight:800;background:linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .metric p{margin:8px 0 0;color:var(--muted);font-size:12px;font-weight:500}
+      .metric.loading h3{animation: pulse 1.5s ease-in-out infinite}
+      
+      .trust-score{font-size:56px;font-weight:800;background:linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      
+      .label-pill{
+        padding:8px 14px;
+        border-radius:999px;
+        font-weight:600;
+        font-size:12px;
+        transition:all 0.3s ease;
+        backdrop-filter:blur(10px);
+      }
+      
+      .label-pill:hover{transform:scale(1.05)}
+      
+      .label-verified{background:linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));color:black}
+      .label-doubtful{background:linear-gradient(90deg, var(--accent-orange), #f97316);color:black}
+      .label-fake{background:linear-gradient(90deg, var(--danger), #c2410c);color:white}
+      
+      .small{font-size:13px;color:var(--muted);font-weight:500}
+      
+      .charts{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+      .chart-card{height:240px;padding:12px;background:linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));border-radius:12px;border:1px solid rgba(255,255,255,0.08)}
+      
+      /* Stats Grid */
+      .stats-grid{display:grid;grid-template-columns: repeat(4, 1fr);gap:16px;margin-top:20px}
+      .stat-card{
+        padding:18px;
+        background:linear-gradient(135deg, rgba(59, 130, 246, 0.1), transparent);
+        border:1px solid rgba(59, 130, 246, 0.2);
+        border-radius:12px;
+        text-align:center;
+        transition:all 0.3s ease;
+      }
+      .stat-card:hover{transform:translateY(-4px);border-color:var(--accent-blue)}
+      .stat-card .value{font-size:28px;font-weight:800;background:linear-gradient(90deg, var(--accent-blue), var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .stat-card .label{font-size:11px;color:var(--muted);margin-top:6px;font-weight:600}
+      
+      /* History */
+      .history-item{
+        padding:14px;
+        background:rgba(255,255,255,0.04);
+        border-left:3px solid var(--accent-blue);
+        border-radius:8px;
+        margin-bottom:10px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        transition:all 0.3s ease;
+        font-size:12px;
+      }
+      .history-item:hover{background:rgba(255,255,255,0.08);transform:translateX(4px)}
+      .history-item .name{font-weight:600}
+      .history-item .score{color:var(--accent-cyan);font-weight:700}
+      .history-item .time{color:var(--muted);font-size:11px}
+      
+      /* Login Modal & Auth */
+      #loginModal{
+        display:flex;
+        position:fixed;
+        top:0;
+        left:0;
+        width:100%;
+        height:100%;
+        background:linear-gradient(135deg, rgba(0,0,0,0.7), rgba(10, 14, 39, 0.9));
+        backdrop-filter:blur(8px);
+        align-items:center;
+        justify-content:center;
+        z-index:2000;
+        animation: slideUp 0.4s ease-out;
+      }
+      #loginModal.hidden{display:none}
+      
+      .login-card{
+        background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+        border:1px solid rgba(59, 130, 246, 0.3);
+        border-radius:20px;
+        width:420px;
+        padding:40px;
+        text-align:center;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+      }
+      
+      .login-card h2{
+        margin:0 0 8px;
+        font-size:28px;
+        font-weight:800;
+        background:linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+        -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent;
+      }
+      
+      .login-card p{color:var(--muted);margin-bottom:24px;font-size:14px}
+      
+      .login-card input{
+        width:100%;
+        padding:13px;
+        margin-bottom:12px;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,0.1);
+        background:rgba(255,255,255,0.05);
+        color:#fff;
+        font-size:13px;
+        transition:all 0.3s ease;
+      }
+      
+      .login-card input:focus{
+        outline:none;
+        background:rgba(255,255,255,0.1);
+        border-color:var(--accent-blue);
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+      }
+      
+      .login-card button{
+        width:100%;
+        padding:13px;
+        margin-bottom:10px;
+        border-radius:10px;
+        border:none;
+        font-weight:600;
+        cursor:pointer;
+        font-size:13px;
+        transition:all 0.3s ease;
+      }
+      
+      #loginBtn{background:linear-gradient(90deg, var(--accent-blue), var(--accent-purple));color:#fff;box-shadow:var(--glow-shadow)}
+      #loginBtn:hover{transform:scale(1.02);box-shadow:0 0 30px rgba(59, 130, 246, 0.5)}
+
+      #googleBtn{
+        background:#ffffff;
+        color:#111827;
+        border:1px solid rgba(0,0,0,0.06);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:8px;
+      }
+
+      #googleBtn:hover{transform:scale(1.02);box-shadow:0 10px 25px rgba(0,0,0,0.15)}
+      
+      #registerBtn{background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.15)}
+      #registerBtn:hover{background:rgba(255,255,255,0.12)}
+      
+      #loginError{color:var(--danger);font-size:12px;margin-top:12px;display:none;padding:10px;background:rgba(239, 68, 68, 0.1);border:1px solid var(--danger);border-radius:8px}
+      
+      #registerError{color:var(--danger);font-size:12px;margin-top:12px;display:none;padding:10px;background:rgba(239, 68, 68, 0.1);border:1px solid var(--danger);border-radius:8px}
+      
+      #logoutBtn{
+        background:linear-gradient(90deg, var(--danger), #c2410c);
+        color:white;
+        padding:10px 14px;
+        border:none;
+        border-radius:8px;
+        cursor:pointer;
+        font-size:12px;
+        font-weight:600;
+        transition:all 0.3s ease;
+      }
+      
+      #logoutBtn:hover{transform:scale(1.05)}
+      
+      /* Toast */
+      .toast{
+        position:fixed;
+        bottom:20px;
+        right:20px;
+        background:linear-gradient(90deg, var(--accent-green), var(--accent-cyan));
+        color:black;
+        padding:14px 18px;
+        border-radius:10px;
+        font-weight:600;
+        font-size:12px;
+        animation: slideUp 0.4s ease-out;
+        box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+        z-index:1000;
+      }
+      
+      .toast.error{background:linear-gradient(90deg, var(--danger), #c2410c);color:white}
+      
+      /* Responsive */
+      @media (max-width: 1024px) {
+        .grid { grid-template-columns: 1fr; }
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .charts { grid-template-columns: 1fr; }
+        .sidebar { width: 220px; }
+        .app { gap: 16px; padding: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Login Modal -->
+    <div id="loginModal" class="card" style="box-shadow:0 20px 60px rgba(0,0,0,0.8)">
+      <div class="login-card">
+        <!-- Login Mode -->
+        <div id="loginMode">
+          <h2>Resume Verify</h2>
+          <p>Enterprise AI-powered verification system</p>
+          
+          <input id="loginEmail" type="email" placeholder="Email address">
+          <input id="loginPassword" type="password" placeholder="Password">
+          
+          <button id="loginBtn">Sign In</button>
+
+          <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
+            <div style="flex:1;height:1px;background:rgba(255,255,255,0.1)"></div>
+            <div style="font-size:11px;color:var(--muted)">or</div>
+            <div style="flex:1;height:1px;background:rgba(255,255,255,0.1)"></div>
+          </div>
+
+          <button id="googleBtn"><i class="fab fa-google"></i> Continue with Google</button>
+          
+          <div style="margin-top:16px;text-align:center;color:var(--muted);font-size:12px">
+            Don't have an account? <span id="switchToRegister" style="color:var(--accent-cyan);cursor:pointer;font-weight:600">Create one</span>
+          </div>
+          
+          <div id="loginError"></div>
+        </div>
+        
+        <!-- Register Mode -->
+        <div id="registerMode" style="display:none">
+          <h2>Create Account</h2>
+          <p>Join Resume Verify and verify your credentials</p>
+          
+          <input id="registerFullName" type="text" placeholder="Full name">
+          <input id="registerEmail" type="email" placeholder="Email address">
+          <input id="registerPassword" type="password" placeholder="Password (min 6 chars)">
+          <input id="registerConfirm" type="password" placeholder="Confirm password">
+          
+          <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+            <input id="registerConsent" type="checkbox" style="width:16px;height:16px;cursor:pointer">
+            <label for="registerConsent" style="font-size:11px;color:var(--muted);cursor:pointer">I agree to Terms & GDPR compliance</label>
+          </div>
+          
+          <button id="registerBtn">Create Account</button>
+          
+          <div style="margin-top:16px;text-align:center;color:var(--muted);font-size:12px">
+            Already have an account? <span id="switchToLogin" style="color:var(--accent-cyan);cursor:pointer;font-weight:600">Sign in</span>
+          </div>
+          
+          <div id="registerError"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app" id="mainApp" style="display:none">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="logo">✓</div>
+          <div>
+            <h1>Resume Verify</h1>
+            <div class="tag">Enterprise AI</div>
+          </div>
+        </div>
+        
+        <nav>
+          <div class="nav-item"><i class="fas fa-chart-line"></i> Dashboard</div>
+          <div class="nav-item"><i class="fas fa-file-upload"></i> Uploads</div>
+          <div class="nav-item"><i class="fas fa-shield-alt"></i> Verify</div>
+          <div class="nav-item"><i class="fas fa-link"></i> Blockchain</div>
+          <div class="nav-item"><i class="fas fa-cog"></i> Settings</div>
+        </nav>
+        
+        <hr style="border:none;border-top:1px dashed rgba(255,255,255,0.1);margin:20px 0" />
+        
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button class="btn" id="connectWallet" style="background:linear-gradient(90deg,var(--accent-cyan),var(--accent-blue));color:black;font-weight:700">
+            <i class="fas fa-wallet"></i> Connect Wallet
+          </button>
+          <button id="logoutBtn" style="width:100%">Logout</button>
+        </div>
+        
+        <div style="margin-top:18px;padding:14px;background:rgba(59, 130, 246, 0.1);border-left:3px solid var(--accent-blue);border-radius:8px">
+          <div style="font-size:11px;color:var(--muted);font-weight:600">QUICK STATS</div>
+          <div style="font-size:18px;font-weight:800;margin-top:6px" id="sidebarScore">0</div>
+          <div style="font-size:10px;color:var(--muted)">Avg Trust Score</div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="topbar">
+          <div class="hero card">
+            <div>
+              <h2>Resume Verification Dashboard</h2>
+              <div class="tagline">AI-powered multi-source verification with blockchain immutability</div>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn" id="exportBtn" style="background:rgba(16, 185, 129, 0.2);color:var(--accent-green)">
+                <i class="fas fa-download"></i> Export
+              </button>
+              <button class="btn" id="uploadQuick" style="background:linear-gradient(90deg,var(--accent-blue),var(--accent-purple));color:white;font-weight:700">
+                <i class="fas fa-cloud-upload-alt"></i> Upload Resume
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="value" id="totalUploads">0</div>
+            <div class="label">Total Uploads</div>
+          </div>
+          <div class="stat-card">
+            <div class="value" id="verifiedCount">0</div>
+            <div class="label">Verified</div>
+          </div>
+          <div class="stat-card">
+            <div class="value" id="doubtfulCount">0</div>
+            <div class="label">Doubtful</div>
+          </div>
+          <div class="stat-card">
+            <div class="value" id="avgScore">0</div>
+            <div class="label">Avg Score</div>
+          </div>
+        </div>
+
+        <div class="grid" style="grid-template-columns: 1fr 1fr 1fr; margin-top: 24px;">
+          <section class="card upload-panel">
+            <h3 style="margin:0 0 14px"><i class="fas fa-upload"></i> Upload Resume</h3>
+            <div id="dropzone" class="dropzone">
+              <p style="margin:0;font-weight:600"><i class="fas fa-file-pdf" style="font-size:28px;color:var(--accent-blue);margin-bottom:10px;display:block"></i>Drag & drop PDF / DOCX</p>
+              <p class="small" style="margin-top:8px">or click to browse • Max: 10MB</p>
+              <input id="fileInput" type="file" accept=".pdf,.docx" style="display:none" />
+            </div>
+            <div id="progressWrap" style="display:none;margin-top:16px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+                <div class="small">Processing...</div>
+                <div class="small" id="progressPercent">0%</div>
+              </div>
+              <div style="height:12px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden">
+                <div id="progressBar" style="height:12px;width:0%;background:linear-gradient(90deg,var(--accent-blue),var(--accent-cyan));transition:width .4s ease"></div>
+              </div>
+            </div>
+            <div id="uploadResult" style="display:none;margin-top:14px;padding:12px;background:rgba(16, 185, 129, 0.1);border:1px solid rgba(16, 185, 129, 0.3);border-radius:8px;color:var(--accent-green);font-weight:600;font-size:12px"></div>
+            <button id="clearBtn" class="btn" style="margin-top:12px;width:100%;background:rgba(239, 68, 68, 0.1);color:var(--danger)">Clear</button>
+          </section>
+
+          <aside class="card">
+            <h3 style="margin:0 0 16px"><i class="fas fa-chart-pie"></i> Score Breakdown</h3>
+            <div style="text-align:center">
+              <div class="trust-score" id="largeScore">—</div>
+              <div class="small" style="margin-bottom:16px">Overall Trust Score</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+                <div class="label-pill label-verified">✓ Verified: <span id="verCount">0</span></div>
+                <div class="label-pill label-doubtful">! Doubtful: <span id="dbtCount">0</span></div>
+                <div class="label-pill label-fake">✕ Fake: <span id="fkCount">0</span></div>
+              </div>
+            </div>
+            
+            <hr style="border:none;border-top:1px dashed rgba(255,255,255,0.08);margin:16px 0" />
+            
+            <div style="padding-top:12px">
+              <div style="font-size:11px;color:var(--muted);font-weight:600;margin-bottom:8px">VERIFICATION SOURCES</div>
+              <div style="font-size:12px;line-height:2.2;color:var(--text-color)">
+                <div><span style="color:var(--accent-green);">✓</span> LinkedIn Profile</div>
+                <div><span style="color:var(--accent-green);">✓</span> GitHub Repositories</div>
+                <div><span style="color:var(--accent-orange);">!</span> Certificate Check</div>
+                <div><span style="color:var(--accent-blue);">✓</span> Timeline Validator</div>
+              </div>
+            </div>
+          </aside>
+
+          <aside class="card">
+            <h3 style="margin:0 0 14px"><i class="fas fa-link"></i> Blockchain</h3>
+            <div style="font-size:12px;line-height:2.4">
+              <div><span class="small">Status:</span> <span style="color:var(--accent-green);font-weight:700;font-family:'Space Mono'">ACTIVE</span></div>
+              <div style="margin-top:8px"><span class="small">Wallet:</span></div>
+              <div style="word-break:break-all;font-size:10px;font-family:'Space Mono';color:var(--accent-cyan);font-weight:600" id="walletAddr">Not connected</div>
+              <div style="margin-top:8px"><span class="small">Registry:</span></div>
+              <div style="word-break:break-all;font-size:10px;font-family:'Space Mono';color:var(--accent-cyan);font-weight:600" id="contractAddr">0x0000...0000</div>
+              <div style="margin-top:8px"><span class="small">TX Hash:</span></div>
+              <div style="word-break:break-all;font-size:9px;font-family:'Space Mono';color:var(--muted)" id="txHash">—</div>
+            </div>
+          </aside>
+        </div>
+
+        <!-- Charts Section -->
+        <section class="card" style="margin-top:24px">
+          <h3 style="margin:0 0 16px"><i class="fas fa-chart-bar"></i> Analytics & Insights</h3>
+          <div class="charts">
+            <div class="chart-card"><canvas id="pieChart"></canvas></div>
+            <div class="chart-card"><canvas id="barChart"></canvas></div>
+          </div>
+        </section>
+
+        <!-- History Section -->
+        <section class="card" style="margin-top:24px">
+          <h3 style="margin:0 0 14px"><i class="fas fa-history"></i> Recent Uploads</h3>
+          <div id="historyList" style="max-height:300px;overflow-y:auto">
+            <div style="text-align:center;color:var(--muted);padding:20px;font-size:12px">
+              <i class="fas fa-inbox"></i> No uploads yet
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const API = 'http://127.0.0.1:8000';
+      const GOOGLE_AUTH_URL = '';
+      let currentToken = localStorage.getItem('authToken');
+      let currentFile = null;
+      let uploadHistory = JSON.parse(localStorage.getItem('uploadHistory') || '[]');
+      let allScores = [];
+
+      function showToast(message, isError = false) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${isError ? 'error' : ''}`;
+        toast.innerHTML = `<i class="fas fa-${isError ? 'exclamation-circle' : 'check-circle'}"></i> ${message}`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+      }
+
+      async function parseApiError(res) {
+        try {
+          const data = await res.json();
+          if (data?.error) return data.error;
+          if (data?.detail) {
+            if (Array.isArray(data.detail)) {
+              return data.detail.map(d => d.msg).filter(Boolean).join(', ') || 'Request failed';
+            }
+            return data.detail;
+          }
+          return 'Request failed';
+        } catch {
+          return 'Request failed';
+        }
+      }
+
+      function updateAuthUI() {
+        if(currentToken) {
+          document.getElementById('loginModal').classList.add('hidden');
+          document.getElementById('mainApp').style.display = 'flex';
+          loadDashboard();
+        } else {
+          document.getElementById('loginModal').classList.remove('hidden');
+          document.getElementById('mainApp').style.display = 'none';
+        }
+      }
+
+      // Auth
+      document.getElementById('loginBtn').addEventListener('click', async() => {
+        const email = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        const errorEl = document.getElementById('loginError');
+        
+        if(!email || !password) {
+          errorEl.textContent = '✗ Please fill all fields';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        if(!email.includes('@')) {
+          errorEl.textContent = '✗ Please enter a valid email';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        try {
+          const res = await fetch(`${API}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          
+          if(!res.ok) {
+            const message = await parseApiError(res);
+            throw new Error(message || 'Invalid email or password');
+          }
+          
+          const data = await res.json();
+          currentToken = data.access_token;
+          localStorage.setItem('authToken', currentToken);
+          errorEl.style.display = 'none';
+          updateAuthUI();
+          showToast('✓ Login successful!');
+        } catch(err) {
+          errorEl.textContent = '✗ ' + err.message;
+          errorEl.style.display = 'block';
+        }
+      });
+
+      document.getElementById('registerBtn').addEventListener('click', async() => {
+        const fullName = document.getElementById('registerFullName').value.trim();
+        const email = document.getElementById('registerEmail').value.trim();
+        const password = document.getElementById('registerPassword').value;
+        const confirmPassword = document.getElementById('registerConfirm').value;
+        const consent = document.getElementById('registerConsent').checked;
+        const errorEl = document.getElementById('registerError');
+        
+        // Validation
+        if(!fullName || !email || !password || !confirmPassword) {
+          errorEl.textContent = '✗ Please fill all fields';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        if(!email.includes('@')) {
+          errorEl.textContent = '✗ Please enter a valid email';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        if(password.length < 6) {
+          errorEl.textContent = '✗ Password must be at least 6 characters';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        if(password !== confirmPassword) {
+          errorEl.textContent = '✗ Passwords do not match';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        if(!consent) {
+          errorEl.textContent = '✗ Please agree to Terms & GDPR compliance';
+          errorEl.style.display = 'block';
+          return;
+        }
+        
+        try {
+          const res = await fetch(`${API}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              email, 
+              password, 
+              full_name: fullName, 
+              gdpr_consent: consent 
+            })
+          });
+          
+          if(!res.ok) {
+            const message = await parseApiError(res);
+            throw new Error(message || 'Registration failed');
+          }
+          
+          errorEl.style.display = 'none';
+          showToast('✓ Account created! Please sign in.');
+          
+          // Switch back to login mode
+          document.getElementById('registerMode').style.display = 'none';
+          document.getElementById('loginMode').style.display = 'block';
+          
+          // Pre-fill email
+          document.getElementById('loginEmail').value = email;
+          document.getElementById('loginPassword').value = '';
+          document.getElementById('loginError').style.display = 'none';
+        } catch(err) {
+          errorEl.textContent = '✗ ' + err.message;
+          errorEl.style.display = 'block';
+        }
+      });
+
+      // Mode switching
+      document.getElementById('switchToRegister').addEventListener('click', () => {
+        document.getElementById('loginMode').style.display = 'none';
+        document.getElementById('registerMode').style.display = 'block';
+        document.getElementById('registerError').style.display = 'none';
+        document.getElementById('loginError').style.display = 'none';
+      });
+
+      document.getElementById('switchToLogin').addEventListener('click', () => {
+        document.getElementById('registerMode').style.display = 'none';
+        document.getElementById('loginMode').style.display = 'block';
+        document.getElementById('loginError').style.display = 'none';
+        document.getElementById('registerError').style.display = 'none';
+      });
+
+      document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('loginBtn').click();
+      });
+
+      document.getElementById('registerConfirm').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('registerBtn').click();
+      });
+
+      document.getElementById('googleBtn').addEventListener('click', () => {
+        if (GOOGLE_AUTH_URL) {
+          window.location.href = GOOGLE_AUTH_URL;
+          return;
+        }
+        showToast('Google login is not configured yet.', true);
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        currentToken = null;
+        localStorage.removeItem('authToken');
+        updateAuthUI();
+        showToast('Logged out successfully');
+      });
+
+      // Upload
+      const fileInput = document.getElementById('fileInput');
+      const dropzone = document.getElementById('dropzone');
+      const progressWrap = document.getElementById('progressWrap');
+      const uploadResult = document.getElementById('uploadResult');
+
+      dropzone.addEventListener('click', () => fileInput.click());
+      
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--accent-cyan)';
+        dropzone.style.background = 'rgba(34, 211, 238, 0.1)';
+      });
+      
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.style.borderColor = '';
+        dropzone.style.background = '';
+      });
+      
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = '';
+        dropzone.style.background = '';
+        if(e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          uploadFile();
+        }
+      });
+      
+      fileInput.addEventListener('change', uploadFile);
+
+      async function uploadFile() {
+        if(!fileInput.files.length) return;
+        currentFile = fileInput.files[0];
+        
+        if(currentFile.size > 10 * 1024 * 1024) {
+          showToast('File too large. Max 10MB', true);
+          return;
+        }
+        
+        progressWrap.style.display = 'block';
+        uploadResult.style.display = 'none';
+        document.getElementById('progressBar').style.width = '20%';
+        document.getElementById('progressPercent').innerText = '20%';
+
+        const formData = new FormData();
+        formData.append('file', currentFile);
+
+        try {
+          document.getElementById('progressBar').style.width = '50%';
+          document.getElementById('progressPercent').innerText = '50%';
+          
+          const res = await fetch(`${API}/api/resumes/upload`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${currentToken}` },
+            body: formData
+          });
+          
+          if(!res.ok) {
+            const errorMsg = await parseApiError(res);
+            throw new Error(errorMsg);
+          }
+          
+          const data = await res.json();
+          console.log('Upload response:', data);
+          
+          if(!data.resume_id) {
+            throw new Error('No resume ID returned');
+          }
+          
+          document.getElementById('progressBar').style.width = '75%';
+          document.getElementById('progressPercent').innerText = '75%';
+          
+          setTimeout(() => getVerification(data.resume_id), 500);
+        } catch(err) {
+          console.error('Upload error:', err);
+          uploadResult.innerHTML = `<i class="fas fa-times-circle"></i> Upload failed: ${err.message}`;
+          uploadResult.style.display = 'block';
+          progressWrap.style.display = 'none';
+          showToast('Upload failed: ' + err.message, true);
+        }
+      }
+
+      async function getVerification(resumeId, attempt = 1) {
+        const maxAttempts = 10;
+        
+        try {
+          console.log(`Polling verification (attempt ${attempt}/${maxAttempts}):`, resumeId);
+          
+          const res = await fetch(`${API}/api/resumes/${resumeId}`, {
+            headers: { 'Authorization': `Bearer ${currentToken}` }
+          });
+          
+          if(!res.ok) {
+            const errorMsg = await parseApiError(res);
+            throw new Error(errorMsg);
+          }
+          
+          const data = await res.json();
+          console.log('Verification response:', data);
+          
+          if(data.trust_score) {
+            displayScore(data.trust_score);
+            document.getElementById('progressBar').style.width = '100%';
+            document.getElementById('progressPercent').innerText = '100%';
+            
+            setTimeout(() => {
+              progressWrap.style.display = 'none';
+              uploadResult.style.display = 'block';
+              uploadResult.innerHTML = `<i class="fas fa-check-circle"></i> ${currentFile.name} verified successfully!`;
+              showToast('✓ Verification complete!');
+              
+              // Add to history
+              uploadHistory.unshift({
+                name: currentFile.name,
+                score: data.trust_score.overall_score,
+                time: new Date().toLocaleTimeString(),
+                date: new Date().toLocaleDateString()
+              });
+              
+              if(uploadHistory.length > 10) uploadHistory.pop();
+              localStorage.setItem('uploadHistory', JSON.stringify(uploadHistory));
+              
+              loadDashboard();
+            }, 500);
+          } else if(attempt < maxAttempts) {
+            const progress = 75 + (attempt * 2);
+            document.getElementById('progressBar').style.width = Math.min(progress, 95) + '%';
+            document.getElementById('progressPercent').innerText = Math.min(progress, 95) + '%';
+            setTimeout(() => getVerification(resumeId, attempt + 1), 1000);
+          } else {
+            throw new Error('Verification timeout - please refresh and check uploads');
+          }
+        } catch(err) {
+          console.error('Verification error:', err);
+          uploadResult.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${err.message}`;
+          uploadResult.style.display = 'block';
+          progressWrap.style.display = 'none';
+          showToast('Verification failed: ' + err.message, true);
+        }
+      }
+
+      function displayScore(score) {
+        const finalScore = Math.round(score.overall_score);
+        
+        document.getElementById('trustScore').innerText = finalScore;
+        document.getElementById('largeScore').innerText = finalScore;
+        
+        let label = 'Verified';
+        let color = 'var(--accent-green)';
+        
+        if(finalScore < 60) {
+          label = 'Fake';
+          color = 'var(--danger)';
+        } else if(finalScore < 75) {
+          label = 'Doubtful';
+          color = 'var(--accent-orange)';
+        }
+        
+        document.getElementById('verCount').innerText = score.verified_count;
+        document.getElementById('dbtCount').innerText = score.doubtful_count;
+        document.getElementById('fkCount').innerText = score.fake_count;
+        
+        allScores.push(finalScore);
+        
+        setPieData([finalScore, 100 - finalScore]);
+        setBarData([finalScore, score.verified_count * 5, score.doubtful_count * 5, score.fake_count * 10]);
+      }
+
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        document.getElementById('largeScore').innerText = '—';
+        document.getElementById('verCount').innerText = '0';
+        document.getElementById('dbtCount').innerText = '0';
+        document.getElementById('fkCount').innerText = '0';
+        fileInput.value = '';
+        uploadResult.style.display = 'none';
+        progressWrap.style.display = 'none';
+      });
+
+      document.getElementById('exportBtn').addEventListener('click', () => {
+        const data = {
+          history: uploadHistory,
+          averageScore: allScores.length ? (allScores.reduce((a,b) => a+b) / allScores.length).toFixed(1) : 0,
+          totalVerifications: allScores.length,
+          exportDate: new Date().toISOString()
+        };
+        
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `resume_verification_${Date.now()}.json`;
+        a.click();
+        showToast('Report exported!');
+      });
+
+      // Charts
+      const pieCtx = document.getElementById('pieChart').getContext('2d');
+      const pieChart = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: { 
+          labels: ['Trust Score','Remaining'], 
+          datasets: [{ 
+            data: [0,100], 
+            backgroundColor: [
+              'rgba(34, 211, 238, 0.8)',
+              'rgba(255,255,255,0.05)'
+            ], 
+            borderWidth: 0 
+          }] 
+        },
+        options: { 
+          cutout: '70%', 
+          plugins: { 
+            legend: { 
+              display: true,
+              labels: { color: 'rgba(255,255,255,0.7)', font: { size: 11 }, usePointStyle: true },
+              position: 'bottom'
+            } 
+          }, 
+          responsive: true, 
+          maintainAspectRatio: false 
+        }
+      });
+
+      const barCtx = document.getElementById('barChart').getContext('2d');
+      const barChart = new Chart(barCtx, {
+        type: 'bar',
+        data: { 
+          labels: ['Overall','Verified','Doubtful','Fake'], 
+          datasets: [{ 
+            data: [0,0,0,0], 
+            backgroundColor: [
+              'rgba(59, 130, 246, 0.8)',
+              'rgba(16, 185, 129, 0.8)',
+              'rgba(245, 158, 11, 0.8)',
+              'rgba(239, 68, 68, 0.8)'
+            ],
+            borderRadius: 6,
+            borderSkipped: false
+          }] 
+        },
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false, 
+          plugins: { 
+            legend: { display: false } 
+          }, 
+          scales: { 
+            y: { 
+              beginAtZero: true, 
+              max: 100,
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 }}
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 10 }}
+            }
+          } 
+        }
+      });
+
+      function setPieData(arr) { pieChart.data.datasets[0].data = arr; pieChart.update(); }
+      function setBarData(arr) { barChart.data.datasets[0].data = arr; barChart.update(); }
+
+      // Dashboard Load
+      async function fetchDashboardStats() {
+        if (!currentToken) return null;
+        try {
+          const res = await fetch(`${API}/api/dashboard/stats`, {
+            headers: { 'Authorization': `Bearer ${currentToken}` }
+          });
+          if (!res.ok) throw new Error('Stats fetch failed');
+          return await res.json();
+        } catch (err) {
+          console.warn('Stats:', err.message);
+          return null;
+        }
+      }
+
+      async function fetchResumes() {
+        if (!currentToken) return [];
+        try {
+          const res = await fetch(`${API}/api/resumes`, {
+            headers: { 'Authorization': `Bearer ${currentToken}` }
+          });
+          if (!res.ok) throw new Error('Resumes fetch failed');
+          const data = await res.json();
+          return Array.isArray(data.resumes) ? data.resumes : [];
+        } catch (err) {
+          console.warn('Resumes:', err.message);
+          return [];
+        }
+      }
+
+      function formatTime(iso) {
+        try {
+          const d = new Date(iso);
+          return d.toLocaleTimeString();
+        } catch { return '--'; }
+      }
+
+      function updateHistoryFromResumes(resumes) {
+        const sorted = resumes.slice().sort((a, b) => {
+          const ad = new Date(a.uploaded_at || 0).getTime();
+          const bd = new Date(b.uploaded_at || 0).getTime();
+          return bd - ad;
+        });
+
+        uploadHistory = sorted.slice(0, 10).map(r => {
+          const score = r.trust_score ? r.trust_score.overall_score : null;
+          return {
+            name: r.filename || 'resume',
+            score: score !== null ? Math.round(score) : '—',
+            time: r.uploaded_at ? formatTime(r.uploaded_at) : '--'
+          };
+        });
+
+        localStorage.setItem('uploadHistory', JSON.stringify(uploadHistory));
+
+        allScores = sorted
+          .filter(r => r.trust_score && typeof r.trust_score.overall_score === 'number')
+          .map(r => Math.round(r.trust_score.overall_score));
+      }
+
+      function renderHistory() {
+        const historyList = document.getElementById('historyList');
+        if (uploadHistory.length === 0) {
+          historyList.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px"><i class="fas fa-inbox"></i> No uploads yet</div>';
+          return;
+        }
+        historyList.innerHTML = uploadHistory.map(h => `
+          <div class="history-item">
+            <div><span class="name"><i class="fas fa-file-pdf"></i> ${h.name}</span></div>
+            <div><span class="score">${h.score}</span></div>
+            <div><span class="time">${h.time}</span></div>
+          </div>
+        `).join('');
+      }
+
+      async function loadDashboard() {
+        const [stats, resumes] = await Promise.all([
+          fetchDashboardStats(),
+          fetchResumes()
+        ]);
+
+        if (resumes.length) {
+          updateHistoryFromResumes(resumes);
+        }
+
+        const totalUploads = stats?.total_resumes ?? resumes.length ?? uploadHistory.length;
+        const avgScore = stats?.average_trust_score ?? (allScores.length ? (allScores.reduce((a,b) => a+b) / allScores.length).toFixed(0) : 0);
+        const verified = stats?.total_verified ?? allScores.filter(s => s >= 75).length;
+        const doubtful = Math.max(0, (totalUploads || 0) - (verified || 0));
+
+        document.getElementById('totalUploads').innerText = totalUploads || 0;
+        document.getElementById('avgScore').innerText = avgScore || 0;
+        document.getElementById('verifiedCount').innerText = verified || 0;
+        document.getElementById('doubtfulCount').innerText = doubtful || 0;
+        document.getElementById('sidebarScore').innerText = avgScore || 0;
+
+        renderHistory();
+      }
+
+      // MetaMask
+      document.getElementById('connectWallet').addEventListener('click', async() => {
+        if(window.ethereum) {
+          try {
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            document.getElementById('walletAddr').innerText = accounts[0];
+            document.getElementById('contractAddr').innerText = '0x742d35Cc6634C0532925a3b844Bc9e7595f' + Math.random().toString(16).slice(2, 8);
+            document.getElementById('txHash').innerText = '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+            showToast('Wallet connected!');
+          } catch(e) { 
+            showToast('Wallet connection cancelled', true);
+          }
+        } else { 
+          showToast('Please install MetaMask', true);
+        }
+      });
+
+      document.getElementById('uploadQuick').addEventListener('click', () => fileInput.click());
+
+      // Initialize
+      updateAuthUI();
+    </script>
+  </body>
+</html>

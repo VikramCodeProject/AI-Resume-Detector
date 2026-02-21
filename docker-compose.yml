@@ -1,0 +1,119 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: resume-verify-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: resume_verify
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - resume_verify_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: resume-verify-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - resume_verify_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-verify-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/resume_verify
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: your-secret-key-change-in-production
+      GITHUB_API_KEY: ${GITHUB_API_KEY}
+      ENVIRONMENT: development
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --reload
+    networks:
+      - resume_verify_network
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-verify-celery
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/resume_verify
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - ./backend:/app
+    command: celery -A tasks worker --loglevel=info
+    networks:
+      - resume_verify_network
+
+  # Celery Beat (Scheduler)
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-verify-celery-beat
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/resume_verify
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - ./backend:/app
+    command: celery -A tasks beat --loglevel=info
+    networks:
+      - resume_verify_network
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: resume-verify-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8000/api
+    volumes:
+      - ./frontend:/app
+    command: npm start
+    networks:
+      - resume_verify_network
+
+volumes:
+  postgres_data:
+
+networks:
+  resume_verify_network:
+    driver: bridge
