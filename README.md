@@ -386,10 +386,10 @@ docker-compose -f docker-compose.production.yml up -d --build
 ```
 
 ### Cloud Platforms
-- **Heroku**: See [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md#heroku)
-- **Railway.app**: See [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md#railwayapp)
-- **Render.com**: See [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md#rendercom)
-- **AWS**: See [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md#aws)
+- **Heroku**: See [DEPLOYMENT.md](DEPLOYMENT.md#heroku)
+- **Railway.app**: See [DEPLOYMENT.md](DEPLOYMENT.md#railwayapp)
+- **Render.com**: See [DEPLOYMENT.md](DEPLOYMENT.md#rendercom)
+- **AWS**: See [DEPLOYMENT.md](DEPLOYMENT.md#aws)
 
 ### Setup Production Deployment
 ```bash
@@ -402,7 +402,7 @@ chmod +x setup-production.sh
 ```
 
 ### Full Deployment Guide
-See **[PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)** for:
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for:
 - Complete setup instructions
 - Security configuration
 - SSL/TLS setup
@@ -415,12 +415,7 @@ See **[PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md)** for:
 
 | Document | Purpose |
 |----------|---------|
-| [QUICKSTART.md](QUICKSTART.md) | 5-minute setup guide |
-| [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md) | Production deployment guide |
-| [DEPLOYMENT_COMPLETE.md](DEPLOYMENT_COMPLETE.md) | Deployment checklist |
-| [QUICK_DEPLOY.md](QUICK_DEPLOY.md) | 3-minute deployment reference |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture details |
-| [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md) | Detailed installation steps |
+
 
 ---
 
