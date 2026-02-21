@@ -1,0 +1,66 @@
+[
+  {
+    "filename": "Resume_1_Verified.txt",
+    "risk_flags": [],
+    "green_flags": [
+      "\u2713 Verifiable open source",
+      "\u2713 Honest GPA disclosure",
+      "\u2713 Technical improvement claims",
+      "\u2713 Specific implementations",
+      "\u2713 Open source participation",
+      "\u2713 Team collaboration",
+      "\u2713 Standard development practice"
+    ],
+    "prediction": "VERIFIED",
+    "confidence_score": 85,
+    "summary": "Found 0 red flags, 7 green flags. Prediction: VERIFIED (85% confidence)"
+  },
+  {
+    "filename": "Resume_2_Exaggerated.txt",
+    "risk_flags": [
+      "\u26a0\ufe0f  Unrealistic team sizes (500+ engineers)",
+      "\u26a0\ufe0f  Impossible growth metrics (1000%+)",
+      "\u26a0\ufe0f  Implausible user numbers (100M+)",
+      "\u26a0\ufe0f  Quantum work before hardware existed",
+      "\u26a0\ufe0f  Overly individualistic claims",
+      "\u26a0\ufe0f  Made-up competitive claims",
+      "\u26a0\ufe0f  Vague tech stack",
+      "\u26a0\ufe0f  Impossible achievement claims",
+      "\u26a0\ufe0f  Won every award claim",
+      "\u26a0\ufe0f  Multiple patents in short timespan",
+      "\u26a0\ufe0f  Perfect GPA claims"
+    ],
+    "green_flags": [
+      "\u2713 Honest GPA disclosure"
+    ],
+    "prediction": "FAKE",
+    "confidence_score": 95,
+    "summary": "Found 11 red flags, 1 green flags. Prediction: FAKE (95% confidence)"
+  },
+  {
+    "filename": "Resume_3_Fake.txt",
+    "risk_flags": [
+      "\u26a0\ufe0f  Self-admitted fake certifications",
+      "\u26a0\ufe0f  Broken LinkedIn profile",
+      "\u26a0\ufe0f  Non-functional project links",
+      "\u26a0\ufe0f  Non-existent certifications claimed",
+      "\u26a0\ufe0f  Invalid certification IDs",
+      "\u26a0\ufe0f  Overly individualistic claims"
+    ],
+    "green_flags": [
+      "\u2713 Logical career timeline",
+      "\u2713 Specific team leadership"
+    ],
+    "prediction": "FAKE",
+    "confidence_score": 90,
+    "summary": "Found 6 red flags, 1 green flags. Prediction: FAKE (90% confidence)"
+  },
+  {
+    "filename": "Resume_4_Timeline_Inconsistency.txt",
+    "risk_flags": [],
+    "green_flags": [],
+    "prediction": "UNCERTAIN",
+    "confidence_score": 50,
+    "summary": "Found 0 red flags, 0 green flags. Prediction: UNCERTAIN (50% confidence)"
+  }
+]
