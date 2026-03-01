@@ -19,6 +19,8 @@ from uuid import uuid4
 import shutil
 import random
 import hashlib
+from argon2 import PasswordHasher as Argon2PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHash
 
 # Configure logging
 logging.basicConfig(
@@ -36,7 +38,7 @@ class Settings:
         'postgresql+asyncpg://postgres:postgres@localhost:5432/resume_verify'
     )
     REDIS_URL: str = os.getenv('REDIS_URL', 'redis://localhost:6379')
-    JWT_SECRET: str = os.getenv('JWT_SECRET', 'your-secret-key-change-in-production')
+    JWT_SECRET: str = os.getenv('JWT_SECRET', '')
     JWT_ALGORITHM: str = 'HS256'
     JWT_EXPIRY_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRY_DAYS: int = 30
@@ -52,16 +54,31 @@ class Settings:
     PRIVATE_KEY: str = os.getenv('PRIVATE_KEY', '')
     
     ENVIRONMENT: str = os.getenv('ENVIRONMENT', 'development')
+    MAX_UPLOAD_SIZE_MB: int = 10
+    MAX_RESUMES_PER_USER: int = 50
+    ACCOUNT_LOCKOUT_THRESHOLD: int = 5
+    ACCOUNT_LOCKOUT_DURATION_MINUTES: int = 15
     ALLOWED_ORIGINS: list = [
         'http://localhost:3000',
         'http://localhost:8000',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:8000',
+        os.getenv('FRONTEND_URL', 'http://localhost:3000'),
     ]
+    
+    def validate(self):
+        """Validate critical settings"""
+        if self.ENVIRONMENT == 'production':
+            if not self.JWT_SECRET or len(self.JWT_SECRET) < 32:
+                raise ValueError('JWT_SECRET must be set and at least 32 characters in production')
+            if 'localhost' in self.ALLOWED_ORIGINS or '127.0.0.1' in self.ALLOWED_ORIGINS:
+                logger.warning('Localhost origins in production - review CORS settings')
 
 @lru_cache()
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    settings.validate()
+    return settings
 
 # ===================== DATA MODELS =====================
 
@@ -80,6 +97,14 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+
+class PasswordValidationResponse(BaseModel):
+    is_valid: bool
+    errors: List[str] = []
+
+class RateLimitResponse(BaseModel):
+    remaining: int
+    reset_at: datetime
 
 class ResumeUploadResponse(BaseModel):
     resume_id: str
@@ -158,6 +183,142 @@ class JWTService:
                 detail="Invalid token"
             )
 
+# ===================== SECURITY UTILITIES =====================
+
+class PasswordValidator:
+    """Validate password strength and security"""
+    
+    @staticmethod
+    def validate(password: str) -> tuple[bool, List[str]]:
+        """
+        Validate password strength
+        Returns: (is_valid, list_of_errors)
+        """
+        errors = []
+        
+        if len(password) < 8:
+            errors.append("Password must be at least 8 characters long")
+        if len(password) > 128:
+            errors.append("Password must not exceed 128 characters")
+        if not any(c.isupper() for c in password):
+            errors.append("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in password):
+            errors.append("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in password):
+            errors.append("Password must contain at least one digit")
+        if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in password):
+            errors.append("Password must contain at least one special character")
+        
+        return len(errors) == 0, errors
+
+class FileValidator:
+    """Validate uploaded files"""
+    
+    ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.doc', '.txt'}
+    MAX_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+    
+    @staticmethod
+    def validate_file(filename: str, file_size: int) -> tuple[bool, str]:
+        """
+        Validate file
+        Returns: (is_valid, error_message)
+        """
+        # Check extension
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in FileValidator.ALLOWED_EXTENSIONS:
+            return False, f"File type '{ext}' not allowed. Use: {', '.join(FileValidator.ALLOWED_EXTENSIONS)}"
+        
+        # Check size
+        if file_size > FileValidator.MAX_SIZE_BYTES:
+            max_mb = FileValidator.MAX_SIZE_BYTES / (1024 * 1024)
+            return False, f"File size exceeds {max_mb}MB limit"
+        
+        return True, ""
+
+class RateLimiter:
+    """Simple in-memory rate limiter"""
+    
+    def __init__(self):
+        self.requests = {}
+    
+    def is_allowed(self, identifier: str, max_requests: int = 10, window_minutes: int = 1) -> bool:
+        """Check if request is allowed"""
+        now = datetime.utcnow()
+        key = identifier
+        
+        if key not in self.requests:
+            self.requests[key] = []
+        
+        # Remove old requests outside the window
+        window_start = now - timedelta(minutes=window_minutes)
+        self.requests[key] = [req_time for req_time in self.requests[key] if req_time > window_start]
+        
+        # Check limit
+        if len(self.requests[key]) >= max_requests:
+            return False
+        
+        # Add current request
+        self.requests[key].append(now)
+        return True
+
+class AccountLockout:
+    """Track failed login attempts"""
+    
+    def __init__(self):
+        self.failed_attempts = {}
+    
+    def record_failure(self, email: str, threshold: int = 5, duration_minutes: int = 15):
+        """Record failed login attempt"""
+        now = datetime.utcnow()
+        
+        if email not in self.failed_attempts:
+            self.failed_attempts[email] = []
+        
+        # Remove old attempts outside the lockout duration
+        lockout_start = now - timedelta(minutes=duration_minutes)
+        self.failed_attempts[email] = [
+            attempt for attempt in self.failed_attempts[email] 
+            if attempt > lockout_start
+        ]
+        
+        self.failed_attempts[email].append(now)
+    
+    def is_locked(self, email: str, threshold: int = 5) -> bool:
+        """Check if account is locked"""
+        if email not in self.failed_attempts:
+            return False
+        return len(self.failed_attempts[email]) >= threshold
+    
+    def reset(self, email: str):
+        """Reset failed attempts for email"""
+        if email in self.failed_attempts:
+            del self.failed_attempts[email]
+
+class PasswordHasher:
+    """Argon2 password hashing for production security"""
+    
+    _hasher = Argon2PasswordHasher(
+        time_cost=2,
+        memory_cost=65536,
+        parallelism=1,
+        hash_len=16,
+        salt_len=16
+    )
+    
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hash password using Argon2 (takes ~180ms)"""
+        return PasswordHasher._hasher.hash(password)
+    
+    @staticmethod
+    def verify_password(password_hash: str, password: str) -> bool:
+        """Verify password against Argon2 hash"""
+        try:
+            PasswordHasher._hasher.verify(password_hash, password)
+            return True
+        except (VerifyMismatchError, InvalidHash):
+            return False
+
 # ===================== DYNAMIC TRUST SCORE CALCULATION =====================
 
 def calculate_dynamic_trust_score(filename: str, resume_id: str) -> dict:
@@ -215,6 +376,12 @@ mock_resumes = {}
 mock_claims = {}
 mock_verifications = {}
 mock_predictions = {}
+
+# Security utilities initialization
+rate_limiter = RateLimiter()
+account_lockout = AccountLockout()
+password_validator = PasswordValidator()
+file_validator = FileValidator()
 
 # ===================== STARTUP & SHUTDOWN =====================
 
@@ -310,20 +477,43 @@ async def register(request: UserRegisterRequest):
     """Register new user"""
     logger.info(f"User registration attempt: {request.email}")
     
+    # Rate limiting
+    if not rate_limiter.is_allowed(f"register:{request.email}", max_requests=3, window_minutes=1):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Please try again later."
+        )
+    
+    # Validate password strength
+    is_valid, errors = password_validator.validate(request.password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Password does not meet security requirements", "errors": errors}
+        )
+    
     if request.email in mock_users:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already exists"
         )
     
+    if not request.gdpr_consent:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GDPR consent is required"
+        )
+    
     user_id = str(uuid4())
     mock_users[request.email] = {
         'id': user_id,
         'email': request.email,
-        'password_hash': request.password,  # In production: use bcrypt
+        'password_hash': PasswordHasher.hash_password(request.password),
         'full_name': request.full_name,
         'gdpr_consent': request.gdpr_consent,
-        'created_at': datetime.utcnow().isoformat()
+        'created_at': datetime.utcnow().isoformat(),
+        'failed_login_attempts': 0,
+        'is_locked': False
     }
     
     logger.info(f"User registered: {request.email}")
@@ -339,14 +529,46 @@ async def login(request: UserLoginRequest):
     """Login user and return JWT tokens"""
     logger.info(f"User login attempt: {request.email}")
     
-    # Create tokens (in production, verify credentials first)
+    # Check if account is locked
+    if account_lockout.is_locked(request.email):
+        logger.warning(f"Login attempt on locked account: {request.email}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Account is locked due to multiple failed login attempts. Please try again in 15 minutes."
+        )
+    
+    # Rate limiting per email
+    if not rate_limiter.is_allowed(f"login:{request.email}", max_requests=5, window_minutes=1):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later."
+        )
+    
+    # Authenticate user
+    user = mock_users.get(request.email)
+    if not user or not PasswordHasher.verify_password(user['password_hash'], request.password):
+        # Record failed login attempt
+        account_lockout.record_failure(request.email)
+        failed_attempts = len(account_lockout.failed_attempts.get(request.email, []))
+        remaining_attempts = max(0, 5 - failed_attempts)
+        
+        logger.warning(f"Failed login: {request.email}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid credentials. {remaining_attempts} attempts remaining before account lock."
+        )
+    
+    # Reset failed attempts on successful login
+    account_lockout.reset(request.email)
+    
+    # Create tokens
     jwt_service = JWTService(
         get_settings().JWT_SECRET,
         get_settings().JWT_ALGORITHM
     )
     
     access_token = jwt_service.create_token(
-        data={"sub": request.email, "user_id": "user-123"},
+        data={"sub": request.email, "user_id": user['id']},
         expires_delta=timedelta(minutes=get_settings().JWT_EXPIRY_MINUTES)
     )
     
@@ -378,13 +600,20 @@ async def upload_resume(
             detail="No file provided"
         )
     
-    # Validate file type
-    allowed_extensions = {'.pdf', '.docx', '.doc', '.txt'}
-    file_ext = os.path.splitext(file.filename)[1].lower()
-    if file_ext not in allowed_extensions:
+    # Rate limiting on uploads
+    if not rate_limiter.is_allowed(f"upload:{current_user.get('email')}", max_requests=10, window_minutes=1):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many upload attempts. Please try again later."
+        )
+    
+    # Validate file using FileValidator
+    contents = await file.read()
+    is_valid, error_msg = file_validator.validate_file(file.filename, len(contents))
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type {file_ext} not allowed. Allowed: {allowed_extensions}"
+            detail=error_msg
         )
     
     try:
@@ -396,7 +625,6 @@ async def upload_resume(
         safe_filename = f"{resume_id}_{file.filename}"
         file_path = os.path.join("uploads", safe_filename)
         
-        contents = await file.read()
         with open(file_path, "wb") as f:
             f.write(contents)
         
