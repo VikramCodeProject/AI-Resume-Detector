@@ -133,7 +133,7 @@
       }
       
       .hero{display:flex;justify-content:space-between;align-items:flex-end}
-      .hero h2{margin:0;font-size:32px;font-weight:800;background:linear-gradient(90deg, #fff, var(--accent-cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .hero h2{margin:0;font-size:32px;font-weight:800;background:linear-gradient(90deg, #fff, var(--accent-cyan));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
       .tagline{color:var(--muted);font-size:14px;margin-top:6px}
       
       .btn{
@@ -190,11 +190,11 @@
         transform: translateY(-2px);
       }
       
-      .metric h3{margin:0;font-size:22px;font-weight:800;background:linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .metric h3{margin:0;font-size:22px;font-weight:800;background:linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
       .metric p{margin:8px 0 0;color:var(--muted);font-size:12px;font-weight:500}
       .metric.loading h3{animation: pulse 1.5s ease-in-out infinite}
       
-      .trust-score{font-size:56px;font-weight:800;background:linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .trust-score{font-size:56px;font-weight:800;background:linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
       
       .label-pill{
         padding:8px 14px;
@@ -227,7 +227,7 @@
         transition:all 0.3s ease;
       }
       .stat-card:hover{transform:translateY(-4px);border-color:var(--accent-blue)}
-      .stat-card .value{font-size:28px;font-weight:800;background:linear-gradient(90deg, var(--accent-blue), var(--accent-purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+      .stat-card .value{font-size:28px;font-weight:800;background:linear-gradient(90deg, var(--accent-blue), var(--accent-purple));background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
       .stat-card .label{font-size:11px;color:var(--muted);margin-top:6px;font-weight:600}
       
       /* History */
@@ -280,6 +280,7 @@
         font-size:28px;
         font-weight:800;
         background:linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+        background-clip:text;
         -webkit-background-clip:text;
         -webkit-text-fill-color:transparent;
       }
@@ -478,6 +479,13 @@
               <div class="tagline">AI-powered multi-source verification with blockchain immutability</div>
             </div>
             <div style="display:flex;gap:10px">
+              <div id="backendStatusBadge" class="btn" title="Open backend diagnostics" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.08);color:var(--muted);cursor:pointer">
+                <span id="backendStatusDot" style="width:9px;height:9px;border-radius:50%;background:var(--accent-orange);box-shadow:0 0 10px rgba(245, 158, 11, 0.6)"></span>
+                <span id="backendStatusText">Backend: Checking...</span>
+              </div>
+              <div id="backendCheckedAt" class="btn" style="display:flex;align-items:center;background:rgba(255,255,255,0.05);color:var(--muted);cursor:default;font-size:11px;padding:11px 14px">
+                Last checked: --
+              </div>
               <button class="btn" id="exportBtn" style="background:rgba(16, 185, 129, 0.2);color:var(--accent-green)">
                 <i class="fas fa-download"></i> Export
               </button>
@@ -518,7 +526,7 @@
             </div>
             <div id="progressWrap" style="display:none;margin-top:16px">
               <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-                <div class="small">Processing...</div>
+                <div class="small" id="progressStatus">Preparing...</div>
                 <div class="small" id="progressPercent">0%</div>
               </div>
               <div style="height:12px;background:rgba(255,255,255,0.04);border-radius:6px;overflow:hidden">
@@ -526,7 +534,11 @@
               </div>
             </div>
             <div id="uploadResult" style="display:none;margin-top:14px;padding:12px;background:rgba(16, 185, 129, 0.1);border:1px solid rgba(16, 185, 129, 0.3);border-radius:8px;color:var(--accent-green);font-weight:600;font-size:12px"></div>
-            <button id="clearBtn" class="btn" style="margin-top:12px;width:100%;background:rgba(239, 68, 68, 0.1);color:var(--danger)">Clear</button>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button id="cancelUploadBtn" class="btn" style="flex:1;background:rgba(245, 158, 11, 0.14);color:var(--accent-orange)">Cancel</button>
+              <button id="retryUploadBtn" class="btn" style="flex:1;background:rgba(59, 130, 246, 0.15);color:var(--accent-cyan)">Retry</button>
+            </div>
+            <button id="clearBtn" class="btn" style="margin-top:8px;width:100%;background:rgba(239, 68, 68, 0.1);color:var(--danger)">Clear</button>
           </section>
 
           <aside class="card">
@@ -590,12 +602,38 @@
     </div>
 
     <script>
-      const API = 'http://127.0.0.1:8080';
+      const APP_CONFIG = window.APP_CONFIG || {};
+      const API = APP_CONFIG.apiBaseUrl || 'http://127.0.0.1:8000';
+      const DASHBOARD_REFRESH_MS = Number(APP_CONFIG.dashboardRefreshMs || 20000);
       const GOOGLE_AUTH_URL = '';
       let currentToken = localStorage.getItem('authToken');
       let currentFile = null;
       let uploadHistory = JSON.parse(localStorage.getItem('uploadHistory') || '[]');
       let allScores = [];
+      let isUploadInProgress = false;
+      let lastSelectedFile = null;
+      let activeUploadSession = 0;
+      let dashboardRefreshTimer = null;
+      let dashboardLoadInProgress = false;
+      let backendHealthTimer = null;
+      let backendHealthConsecutiveFailures = 0;
+      let backendHealthInFlight = false;
+
+      function saveBackendHealthSnapshot(snapshot) {
+        try {
+          localStorage.setItem('backendHealthSnapshot', JSON.stringify(snapshot));
+        } catch {
+          // Ignore storage failures.
+        }
+      }
+
+      function loadBackendHealthSnapshot() {
+        try {
+          return JSON.parse(localStorage.getItem('backendHealthSnapshot') || 'null');
+        } catch {
+          return null;
+        }
+      }
 
       function showToast(message, isError = false) {
         const toast = document.createElement('div');
@@ -626,9 +664,189 @@
           document.getElementById('loginModal').classList.add('hidden');
           document.getElementById('mainApp').style.display = 'flex';
           loadDashboard();
+          startDashboardAutoRefresh();
+          startBackendHealthChecks();
         } else {
           document.getElementById('loginModal').classList.remove('hidden');
           document.getElementById('mainApp').style.display = 'none';
+          stopDashboardAutoRefresh();
+          stopBackendHealthChecks();
+        }
+      }
+
+      function setBackendStatus(online, label) {
+        const badge = document.getElementById('backendStatusBadge');
+        const dot = document.getElementById('backendStatusDot');
+        const text = document.getElementById('backendStatusText');
+
+        if (online) {
+          dot.style.background = 'var(--accent-green)';
+          dot.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.6)';
+          badge.style.color = 'var(--accent-green)';
+          text.innerText = label || 'Backend: Online';
+          return;
+        }
+
+        dot.style.background = 'var(--danger)';
+        dot.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.6)';
+        badge.style.color = 'var(--danger)';
+        text.innerText = label || 'Backend: Offline';
+      }
+
+      function setBackendLastChecked(latencyMs = null) {
+        const checkedAtEl = document.getElementById('backendCheckedAt');
+        const timeLabel = new Date().toLocaleTimeString();
+        const latencyLabel = Number.isFinite(latencyMs) ? ` • ${Math.round(latencyMs)}ms` : '';
+        checkedAtEl.innerText = `Last checked: ${timeLabel}${latencyLabel}`;
+      }
+
+      function setBackendLastCheckedText(isoTime, latencyMs = null) {
+        const checkedAtEl = document.getElementById('backendCheckedAt');
+        const date = isoTime ? new Date(isoTime) : new Date();
+        const timeLabel = Number.isNaN(date.getTime()) ? '--' : date.toLocaleTimeString();
+        const latencyLabel = Number.isFinite(latencyMs) ? ` • ${Math.round(latencyMs)}ms` : '';
+        checkedAtEl.innerText = `Last checked: ${timeLabel}${latencyLabel}`;
+      }
+
+      function restoreBackendHealthSnapshot() {
+        const snapshot = loadBackendHealthSnapshot();
+        if (!snapshot) return;
+
+        backendHealthConsecutiveFailures = Number(snapshot.failures || 0);
+        setBackendStatus(!!snapshot.online, snapshot.label || (snapshot.online ? 'Backend: Online' : 'Backend: Offline'));
+        setBackendLastCheckedText(snapshot.checkedAt, snapshot.latencyMs);
+      }
+
+      function openBackendDiagnostics(event) {
+        // Modifier-click opens health JSON directly, normal click opens API docs.
+        const openHealthDirectly = event?.ctrlKey || event?.metaKey || event?.shiftKey;
+        const targetUrl = openHealthDirectly ? `${API}/api/health` : `${API}/api/docs`;
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      }
+
+      function scheduleNextHealthCheck(isHealthy) {
+        if (backendHealthTimer) {
+          clearTimeout(backendHealthTimer);
+          backendHealthTimer = null;
+        }
+
+        const healthyDelayMs = 15000;
+        const degradedDelayMs = Math.min(60000, 15000 * (backendHealthConsecutiveFailures + 1));
+        const nextDelayMs = isHealthy ? healthyDelayMs : degradedDelayMs;
+
+        backendHealthTimer = setTimeout(() => {
+          if (!document.hidden) {
+            pingBackendHealth();
+            return;
+          }
+          // Re-check shortly after tab becomes active.
+          scheduleNextHealthCheck(false);
+        }, nextDelayMs);
+      }
+
+      async function pingBackendHealth() {
+        if (backendHealthInFlight) return;
+        backendHealthInFlight = true;
+
+        const startedAt = performance.now();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
+        try {
+          const res = await fetch(`${API}/api/health`, { method: 'GET', signal: controller.signal });
+          if (!res.ok) {
+            backendHealthConsecutiveFailures += 1;
+            setBackendStatus(false, 'Backend: Unreachable');
+            setBackendLastChecked();
+            saveBackendHealthSnapshot({
+              online: false,
+              label: 'Backend: Unreachable',
+              checkedAt: new Date().toISOString(),
+              latencyMs: null,
+              failures: backendHealthConsecutiveFailures
+            });
+            scheduleNextHealthCheck(false);
+            return;
+          }
+
+          const data = await res.json();
+          const online = data?.status === 'healthy';
+          const latencyMs = performance.now() - startedAt;
+
+          if (online) {
+            backendHealthConsecutiveFailures = 0;
+            setBackendStatus(true, `Backend: Online (${Math.round(latencyMs)}ms)`);
+            setBackendLastChecked(latencyMs);
+            saveBackendHealthSnapshot({
+              online: true,
+              label: `Backend: Online (${Math.round(latencyMs)}ms)`,
+              checkedAt: new Date().toISOString(),
+              latencyMs,
+              failures: backendHealthConsecutiveFailures
+            });
+            scheduleNextHealthCheck(true);
+            return;
+          }
+
+          backendHealthConsecutiveFailures += 1;
+          setBackendStatus(false, 'Backend: Degraded');
+          setBackendLastChecked(latencyMs);
+          saveBackendHealthSnapshot({
+            online: false,
+            label: 'Backend: Degraded',
+            checkedAt: new Date().toISOString(),
+            latencyMs,
+            failures: backendHealthConsecutiveFailures
+          });
+          scheduleNextHealthCheck(false);
+        } catch {
+          backendHealthConsecutiveFailures += 1;
+          setBackendStatus(false, 'Backend: Offline');
+          setBackendLastChecked();
+          saveBackendHealthSnapshot({
+            online: false,
+            label: 'Backend: Offline',
+            checkedAt: new Date().toISOString(),
+            latencyMs: null,
+            failures: backendHealthConsecutiveFailures
+          });
+          scheduleNextHealthCheck(false);
+        } finally {
+          clearTimeout(timeout);
+          backendHealthInFlight = false;
+        }
+      }
+
+      function startBackendHealthChecks() {
+        stopBackendHealthChecks();
+        backendHealthConsecutiveFailures = 0;
+        pingBackendHealth();
+      }
+
+      function stopBackendHealthChecks() {
+        if (backendHealthTimer) {
+          clearTimeout(backendHealthTimer);
+          backendHealthTimer = null;
+        }
+        backendHealthInFlight = false;
+      }
+
+      document.getElementById('backendStatusBadge').addEventListener('click', openBackendDiagnostics);
+
+      function startDashboardAutoRefresh() {
+        stopDashboardAutoRefresh();
+        if (!currentToken) return;
+        dashboardRefreshTimer = setInterval(() => {
+          if (!document.hidden && !isUploadInProgress) {
+            loadDashboard();
+          }
+        }, DASHBOARD_REFRESH_MS);
+      }
+
+      function stopDashboardAutoRefresh() {
+        if (dashboardRefreshTimer) {
+          clearInterval(dashboardRefreshTimer);
+          dashboardRefreshTimer = null;
         }
       }
 
@@ -790,11 +1008,111 @@
       const dropzone = document.getElementById('dropzone');
       const progressWrap = document.getElementById('progressWrap');
       const uploadResult = document.getElementById('uploadResult');
+      const progressBar = document.getElementById('progressBar');
+      const progressPercent = document.getElementById('progressPercent');
+      const progressStatus = document.getElementById('progressStatus');
+      const cancelUploadBtn = document.getElementById('cancelUploadBtn');
+      const retryUploadBtn = document.getElementById('retryUploadBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      let activeUploadRequest = null;
+
+      function updateUploadControls() {
+        const hasRetryableFile = !!lastSelectedFile;
+        dropzone.style.pointerEvents = isUploadInProgress ? 'none' : 'auto';
+        dropzone.style.opacity = isUploadInProgress ? '0.7' : '1';
+        cancelUploadBtn.disabled = !isUploadInProgress;
+        retryUploadBtn.disabled = isUploadInProgress || !hasRetryableFile;
+        clearBtn.disabled = isUploadInProgress;
+      }
+
+      function abortActiveUpload(message = 'Upload cancelled') {
+        activeUploadSession += 1;
+        if (activeUploadRequest) {
+          activeUploadRequest.abort();
+          activeUploadRequest = null;
+        }
+        isUploadInProgress = false;
+        setProgress(0, message);
+        progressWrap.style.display = 'none';
+        if (currentFile) {
+          uploadResult.innerHTML = `<i class="fas fa-info-circle"></i> ${message}`;
+          uploadResult.style.display = 'block';
+        }
+        updateUploadControls();
+      }
+
+      function setProgress(percent, statusText) {
+        const bounded = Math.max(0, Math.min(100, Math.round(percent)));
+        progressBar.style.width = `${bounded}%`;
+        progressPercent.innerText = `${bounded}%`;
+        if (statusText) {
+          progressStatus.innerText = statusText;
+        }
+      }
+
+      function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function parseXhrError(xhr) {
+        try {
+          const data = JSON.parse(xhr.responseText || '{}');
+          if (data?.error) return data.error;
+          if (data?.detail) {
+            if (Array.isArray(data.detail)) {
+              return data.detail.map((d) => d.msg).filter(Boolean).join(', ') || 'Request failed';
+            }
+            return data.detail;
+          }
+        } catch {
+          // Ignore parsing errors and fall back below.
+        }
+        return `Upload failed (${xhr.status || 'network error'})`;
+      }
+
+      function uploadResumeWithProgress(formData) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          activeUploadRequest = xhr;
+          xhr.open('POST', `${API}/api/resumes/upload`, true);
+          xhr.setRequestHeader('Authorization', `Bearer ${currentToken}`);
+
+          xhr.upload.onprogress = (event) => {
+            if (!event.lengthComputable) return;
+            const rawPercent = (event.loaded / event.total) * 100;
+            // Reserve the final 30% for backend processing/polling feedback.
+            const uploadStagePercent = 5 + rawPercent * 0.65;
+            setProgress(uploadStagePercent, 'Uploading resume...');
+          };
+
+          xhr.onload = () => {
+            activeUploadRequest = null;
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const data = JSON.parse(xhr.responseText || '{}');
+                resolve(data);
+              } catch {
+                reject(new Error('Server returned invalid JSON response'));
+              }
+              return;
+            }
+            reject(new Error(parseXhrError(xhr)));
+          };
+
+          xhr.onerror = () => {
+            activeUploadRequest = null;
+            reject(new Error('Network error while uploading file'));
+          };
+
+          xhr.send(formData);
+        });
+      }
 
       dropzone.addEventListener('click', () => fileInput.click());
       
       dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
+        if (isUploadInProgress) return;
         dropzone.style.borderColor = 'var(--accent-cyan)';
         dropzone.style.background = 'rgba(34, 211, 238, 0.1)';
       });
@@ -806,19 +1124,36 @@
       
       dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
+        if (isUploadInProgress) {
+          showToast('Upload is already in progress.', true);
+          return;
+        }
         dropzone.style.borderColor = '';
         dropzone.style.background = '';
         if(e.dataTransfer.files.length) {
           fileInput.files = e.dataTransfer.files;
-          uploadFile();
+          uploadFile(e.dataTransfer.files[0]);
         }
       });
       
-      fileInput.addEventListener('change', uploadFile);
+      fileInput.addEventListener('change', () => uploadFile());
 
-      async function uploadFile() {
-        if(!fileInput.files.length) return;
-        currentFile = fileInput.files[0];
+      async function uploadFile(fileOverride = null) {
+        if (isUploadInProgress) {
+          showToast('Upload is already in progress.', true);
+          return;
+        }
+
+        const selectedFile = fileOverride || fileInput.files[0];
+        if(!selectedFile) return;
+        currentFile = selectedFile;
+        lastSelectedFile = selectedFile;
+
+        if(!currentToken) {
+          showToast('Please sign in before uploading.', true);
+          updateAuthUI();
+          return;
+        }
         
         if(currentFile.size > 10 * 1024 * 1024) {
           showToast('File too large. Max 10MB', true);
@@ -827,76 +1162,69 @@
         
         progressWrap.style.display = 'block';
         uploadResult.style.display = 'none';
-        document.getElementById('progressBar').style.width = '20%';
-        document.getElementById('progressPercent').innerText = '20%';
+        setProgress(5, 'Preparing upload...');
+        isUploadInProgress = true;
+        const sessionId = ++activeUploadSession;
+        updateUploadControls();
 
         const formData = new FormData();
         formData.append('file', currentFile);
 
         try {
-          document.getElementById('progressBar').style.width = '50%';
-          document.getElementById('progressPercent').innerText = '50%';
-          
-          const res = await fetch(`${API}/api/resumes/upload`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${currentToken}` },
-            body: formData
-          });
-          
-          if(!res.ok) {
-            const errorMsg = await parseApiError(res);
-            throw new Error(errorMsg);
-          }
-          
-          const data = await res.json();
+          const data = await uploadResumeWithProgress(formData);
+          if (sessionId !== activeUploadSession) return;
           console.log('Upload response:', data);
           
           if(!data.resume_id) {
             throw new Error('No resume ID returned');
           }
           
-          document.getElementById('progressBar').style.width = '75%';
-          document.getElementById('progressPercent').innerText = '75%';
-          
-          setTimeout(() => getVerification(data.resume_id), 500);
+          setProgress(72, 'Upload complete. Waiting for verification...');
+          await getVerification(data.resume_id, 1, sessionId);
         } catch(err) {
+          if (sessionId !== activeUploadSession) return;
           console.error('Upload error:', err);
           uploadResult.innerHTML = `<i class="fas fa-times-circle"></i> Upload failed: ${err.message}`;
           uploadResult.style.display = 'block';
           progressWrap.style.display = 'none';
+          isUploadInProgress = false;
+          updateUploadControls();
           showToast('Upload failed: ' + err.message, true);
         }
       }
 
-      async function getVerification(resumeId, attempt = 1) {
-        const maxAttempts = 10;
-        
+      async function getVerification(resumeId, attempt = 1, sessionId = activeUploadSession) {
+        const maxAttempts = 20;
+
         try {
-          console.log(`Polling verification (attempt ${attempt}/${maxAttempts}):`, resumeId);
-          
-          const res = await fetch(`${API}/api/resumes/${resumeId}`, {
-            headers: { 'Authorization': `Bearer ${currentToken}` }
-          });
-          
-          if(!res.ok) {
-            const errorMsg = await parseApiError(res);
-            throw new Error(errorMsg);
-          }
-          
-          const data = await res.json();
-          console.log('Verification response:', data);
-          
-          if(data.trust_score) {
-            displayScore(data.trust_score);
-            document.getElementById('progressBar').style.width = '100%';
-            document.getElementById('progressPercent').innerText = '100%';
-            
-            setTimeout(() => {
+          for (let currentAttempt = attempt; currentAttempt <= maxAttempts; currentAttempt++) {
+            if (sessionId !== activeUploadSession) {
+              return;
+            }
+            console.log(`Polling verification (attempt ${currentAttempt}/${maxAttempts}):`, resumeId);
+
+            const res = await fetch(`${API}/api/resumes/${resumeId}`, {
+              headers: { 'Authorization': `Bearer ${currentToken}` }
+            });
+
+            if(!res.ok) {
+              const errorMsg = await parseApiError(res);
+              throw new Error(errorMsg);
+            }
+
+            const data = await res.json();
+            console.log('Verification response:', data);
+
+            if(data.trust_score) {
+              displayScore(data.trust_score);
+              setProgress(100, 'Verification complete');
+
+              await delay(400);
               progressWrap.style.display = 'none';
               uploadResult.style.display = 'block';
               uploadResult.innerHTML = `<i class="fas fa-check-circle"></i> ${currentFile.name} verified successfully!`;
               showToast('✓ Verification complete!');
-              
+
               // Add to history
               uploadHistory.unshift({
                 name: currentFile.name,
@@ -904,25 +1232,32 @@
                 time: new Date().toLocaleTimeString(),
                 date: new Date().toLocaleDateString()
               });
-              
+
               if(uploadHistory.length > 10) uploadHistory.pop();
               localStorage.setItem('uploadHistory', JSON.stringify(uploadHistory));
-              
+
+              isUploadInProgress = false;
+              updateUploadControls();
               loadDashboard();
-            }, 500);
-          } else if(attempt < maxAttempts) {
-            const progress = 75 + (attempt * 2);
-            document.getElementById('progressBar').style.width = Math.min(progress, 95) + '%';
-            document.getElementById('progressPercent').innerText = Math.min(progress, 95) + '%';
-            setTimeout(() => getVerification(resumeId, attempt + 1), 1000);
-          } else {
-            throw new Error('Verification timeout - please refresh and check uploads');
+              return;
+            }
+
+            const progress = Math.min(95, 72 + currentAttempt);
+            setProgress(progress, 'Analyzing resume claims...');
+            await delay(1000);
           }
+
+          throw new Error('Verification timeout - please refresh and check uploads');
         } catch(err) {
+          if (sessionId !== activeUploadSession) {
+            return;
+          }
           console.error('Verification error:', err);
           uploadResult.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${err.message}`;
           uploadResult.style.display = 'block';
           progressWrap.style.display = 'none';
+          isUploadInProgress = false;
+          updateUploadControls();
           showToast('Verification failed: ' + err.message, true);
         }
       }
@@ -930,7 +1265,10 @@
       function displayScore(score) {
         const finalScore = Math.round(score.overall_score);
         
-        document.getElementById('trustScore').innerText = finalScore;
+        const trustScoreEl = document.getElementById('trustScore');
+        if (trustScoreEl) {
+          trustScoreEl.innerText = finalScore;
+        }
         document.getElementById('largeScore').innerText = finalScore;
         
         let label = 'Verified';
@@ -954,14 +1292,34 @@
         setBarData([finalScore, score.verified_count * 5, score.doubtful_count * 5, score.fake_count * 10]);
       }
 
-      document.getElementById('clearBtn').addEventListener('click', () => {
+      cancelUploadBtn.addEventListener('click', () => {
+        if (!isUploadInProgress) return;
+        abortActiveUpload('Upload cancelled by user');
+        showToast('Upload cancelled');
+      });
+
+      retryUploadBtn.addEventListener('click', () => {
+        if (isUploadInProgress || !lastSelectedFile) return;
+        uploadFile(lastSelectedFile);
+      });
+
+      clearBtn.addEventListener('click', () => {
         document.getElementById('largeScore').innerText = '—';
         document.getElementById('verCount').innerText = '0';
         document.getElementById('dbtCount').innerText = '0';
         document.getElementById('fkCount').innerText = '0';
         fileInput.value = '';
+        currentFile = null;
+        if (isUploadInProgress) {
+          abortActiveUpload();
+        } else if (activeUploadRequest) {
+          activeUploadRequest.abort();
+          activeUploadRequest = null;
+        }
+        setProgress(0, 'Preparing...');
         uploadResult.style.display = 'none';
         progressWrap.style.display = 'none';
+        updateUploadControls();
       });
 
       document.getElementById('exportBtn').addEventListener('click', () => {
@@ -1128,6 +1486,10 @@
       }
 
       async function loadDashboard() {
+        if (dashboardLoadInProgress) return;
+        dashboardLoadInProgress = true;
+
+        try {
         const [stats, resumes] = await Promise.all([
           fetchDashboardStats(),
           fetchResumes()
@@ -1149,6 +1511,9 @@
         document.getElementById('sidebarScore').innerText = avgScore || 0;
 
         renderHistory();
+        } finally {
+          dashboardLoadInProgress = false;
+        }
       }
 
       // MetaMask
@@ -1171,6 +1536,8 @@
       document.getElementById('uploadQuick').addEventListener('click', () => fileInput.click());
 
       // Initialize
+      restoreBackendHealthSnapshot();
+      updateUploadControls();
       updateAuthUI();
     </script>
   </body>
