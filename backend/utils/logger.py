@@ -3,7 +3,13 @@ import os
 from logging.handlers import RotatingFileHandler
 from time import perf_counter
 
-from pythonjsonlogger import jsonlogger
+# Optional JSON logging
+try:
+    from pythonjsonlogger import jsonlogger
+    HAS_JSON_LOGGER = True
+except ImportError:
+    HAS_JSON_LOGGER = False
+
 from starlette.requests import Request
 
 
@@ -21,9 +27,15 @@ def setup_logging() -> None:
     if root_logger.handlers:
         root_logger.handlers.clear()
 
-    formatter = jsonlogger.JsonFormatter(
-        "%(asctime)s %(levelname)s %(name)s %(message)s %(pathname)s %(lineno)d"
-    )
+    # Use JSON formatter if available, otherwise standard
+    if HAS_JSON_LOGGER:
+        formatter = jsonlogger.JsonFormatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s %(pathname)s %(lineno)d"
+        )
+    else:
+        formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s %(message)s"
+        )
 
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
