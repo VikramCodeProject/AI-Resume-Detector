@@ -24,12 +24,12 @@ COPY . .
 # Create logs directory for structured file logs
 RUN mkdir -p /app/logs
 
-# Expose port
-EXPOSE 8000
+# Expose Render default port
+EXPOSE 10000
 
-# Health check
+# Health check (uses Render PORT when available)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/health')" || exit 1
+    CMD sh -c "python -c \"import os,requests; p=os.getenv('PORT','10000'); requests.get(f'http://localhost:{p}/api/health', timeout=5)\"" || exit 1
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Run the application on Render-assigned port
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers 2"]
