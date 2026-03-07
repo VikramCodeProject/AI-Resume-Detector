@@ -19,8 +19,15 @@ from uuid import uuid4
 import shutil
 import random
 import hashlib
-from argon2 import PasswordHasher as Argon2PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHash
+
+# Optional argon2 (use passlib fallback if not available)
+try:
+    from argon2 import PasswordHasher as Argon2PasswordHasher
+    from argon2.exceptions import VerifyMismatchError, InvalidHash
+    USE_ARGON2 = True
+except ImportError:
+    from passlib.hash import pbkdf2_sha256
+    USE_ARGON2 = False
 
 # Import verification services
 from services import (
@@ -36,18 +43,29 @@ try:
     from monitoring.metrics import metrics_middleware, metrics_response
     MONITORING_ENABLED = True
 except ImportError as e:
-    logger.warning(f"Monitoring disabled: {e}")
     MONITORING_ENABLED = False
     metrics_middleware = None
     metrics_response = None
 
 from utils.exceptions import BlockchainError, OCRProcessingError, ResumeVerificationError
 from utils.logger import request_logging_middleware, setup_logging
-from utils.rate_limiter import SlowAPIMiddleware
+
+# Optional rate limiting
+try:
+    from utils.rate_limiter import SlowAPIMiddleware
+    RATE_LIMITING_ENABLED = True
+except ImportError:
+    RATE_LIMITING_ENABLED = False
 
 # Configure logging
 setup_logging()
 logger = logging.getLogger(__name__)
+if not MONITORING_ENABLED:
+    logger.warning("Monitoring disabled (prometheus-client not installed)")
+if not USE_ARGON2:
+    logger.warning("Argon2 not available, using PBKDF2 for password hashing")
+if not RATE_LIMITING_ENABLED:
+    logger.warning("Rate limiting disabled (slowapi not installed)")
 
 # ===================== CONFIGURATION =====================
 
@@ -344,29 +362,36 @@ class AccountLockout:
             del self.failed_attempts[email]
 
 class PasswordHasher:
-    """Argon2 password hashing for production security"""
+    """Password hashing - uses Argon2 if available, otherwise PBKDF2"""
     
-    _hasher = Argon2PasswordHasher(
-        time_cost=2,
-        memory_cost=65536,
-        parallelism=1,
-        hash_len=16,
-        salt_len=16
-    )
+    if USE_ARGON2:
+        _hasher = Argon2PasswordHasher(
+            time_cost=2,
+            memory_cost=65536,
+            parallelism=1,
+            hash_len=16,
+            salt_len=16
+        )
     
     @staticmethod
     def hash_password(password: str) -> str:
-        """Hash password using Argon2 (takes ~180ms)"""
-        return PasswordHasher._hasher.hash(password)
+        """Hash password using available hasher"""
+        if USE_ARGON2:
+            return PasswordHasher._hasher.hash(password)
+        else:
+            return pbkdf2_sha256.hash(password)
     
     @staticmethod
     def verify_password(password_hash: str, password: str) -> bool:
-        """Verify password against Argon2 hash"""
-        try:
-            PasswordHasher._hasher.verify(password_hash, password)
-            return True
-        except (VerifyMismatchError, InvalidHash):
-            return False
+        """Verify password against hash"""
+        if USE_ARGON2:
+            try:
+                PasswordHasher._hasher.verify(password_hash, password)
+                return True
+            except (VerifyMismatchError, InvalidHash):
+                return False
+        else:
+            return pbkdf2_sha256.verify(password, password_hash)
 
 # ===================== DYNAMIC TRUST SCORE CALCULATION =====================
 
