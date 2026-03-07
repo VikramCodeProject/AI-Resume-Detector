@@ -1,5 +1,5 @@
 # Minimal Production Dependencies - Render Free Tier
-# Only core packages needed to start the API
+# Only packages with pre-built binary wheels (no compilation)
 
 # Core Framework & Server
 fastapi==0.104.1
@@ -9,7 +9,7 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-multipart==0.0.6
 
-# Database
+# Database (binary wheel - no compilation)
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 
@@ -17,21 +17,23 @@ psycopg2-binary==2.9.9
 redis==5.0.1
 celery==5.3.4
 kombu==5.3.4
+amqp==5.2.0
 
-# Authentication
+# Authentication (using pre-built wheels)
 PyJWT==2.8.0
-passlib==1.7.4
-bcrypt==4.1.2
-python-jose==3.3.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.1
 argon2-cffi==23.1.0
 
-# HTTP
+# HTTP Clients
 requests==2.31.0
 httpx==0.25.2
 
 # Utilities
 python-dotenv==1.0.0
 python-dateutil==2.8.2
+pyyaml==6.0.1
 
 # Rate limiting
 slowapi==0.1.9
