@@ -1,17 +1,9 @@
 services:
-  # PostgreSQL Database Service (Managed)
-  - type: pserv
-    name: resume-verify-db
-    env: postgresql
-    plan: free
-    region: oregon
-    envVars:
-      - key: POSTGRES_USER
-        value: postgres
-      - key: POSTGRES_PASSWORD
-        sync: false  # Set strong password in Render dashboard
-      - key: POSTGRES_DB
-        value: resume_verify
+  # IMPORTANT: Create PostgreSQL database manually in Render Dashboard
+  # 1. Go to Render Dashboard → New → PostgreSQL
+  # 2. Create: resume-verify-db (free tier)
+  # 3. Copy internal database URL
+  # 4. Paste into Backend service DATABASE_URL environment variable
 
   # Backend Service (FastAPI)
   - type: web
@@ -28,25 +20,13 @@ services:
       - key: ENVIRONMENT
         value: production
 
-      # Database Connection - construct from host and port
+      # Database Connection (set manually after creating PostgreSQL service)
       - key: DATABASE_URL
-        value: postgresql://postgres:${POSTGRES_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/resume_verify
+        sync: false  # Paste your PostgreSQL internal URL here
 
-      # Database service properties
-      - key: DATABASE_HOST
-        fromService:
-          type: pserv
-          name: resume-verify-db
-          property: host
-        scope: RUN_AND_BUILD
-      - key: DATABASE_PORT
-        fromService:
-          type: pserv
-          name: resume-verify-db
-          property: port
-        scope: RUN_AND_BUILD
-      - key: POSTGRES_PASSWORD
-        sync: false
+      # Database credentials (for reference only)
+      - key: POSTGRES_DB
+        value: resume_verify
 
       # Redis Connection (use external service - Upstash)
       - key: REDIS_URL
@@ -55,7 +35,6 @@ services:
       # Frontend URL
       - key: FRONTEND_URL
         value: https://resume-verify-frontend.onrender.com
-        scope: RUN_AND_BUILD
 
       # Secrets (set in Render dashboard)
       - key: JWT_SECRET
@@ -103,7 +82,6 @@ services:
       # Backend API URL (hardcoded to backend service domain)
       - key: VITE_API_URL
         value: https://resume-verify-backend.onrender.com
-        scope: BUILD
 
       # Environment
       - key: NODE_ENV
