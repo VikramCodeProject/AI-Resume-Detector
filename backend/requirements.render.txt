@@ -1,25 +1,6 @@
-# Ultra-minimal for Render - just enough to start the API
-# Add more packages after successful deployment
+# Absolute bare minimum for Render free tier
+# No version pins to avoid conflicts
 
-# Core API Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-gunicorn==21.2.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-
-# Database
-sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
-
-# Redis
-redis==5.0.1
-
-# Authentication - minimal
-PyJWT==2.8.0
-passlib==1.7.4
-
-# HTTP clients
-python-dotenv==1.0.0
-requests==2.31.0
-aiohttp==3.9.1
+fastapi
+uvicorn
+gunicorn
