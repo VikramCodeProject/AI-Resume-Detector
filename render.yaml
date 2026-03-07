@@ -17,16 +17,12 @@ services:
       - key: POSTGRES_DB
         value: resume_verify
 
-  # Redis Cache Service (Managed)
-  - type: pserv
-    name: resume-verify-redis
-    env: redis
-    plan: free
-    region: oregon
-    disk:
-      name: redis-data
-      size: 5
-    ipAllowList: []
+  # NOTE: Redis is not available in Render's free tier
+  # Use Upstash Redis (free tier) or Redis Cloud
+  # 1. Sign up at https://upstash.com
+  # 2. Create a Redis database
+  # 3. Copy the connection URL
+  # 4. Add it to REDIS_URL in Render dashboard
 
   # Backend Service (FastAPI)
   - type: web
@@ -58,13 +54,9 @@ services:
           property: connectionString
         scope: RUN_AND_BUILD
 
-      # Redis Connection (linked from Redis service)
+      # Redis Connection (use external Redis service like Upstash)
       - key: REDIS_URL
-        fromService:
-          type: pserv
-          name: resume-verify-redis
-          property: connectionString
-        scope: RUN_AND_BUILD
+        sync: false  # Set this to your Upstash Redis URL in Render dashboard
 
       # Frontend URL (linked from Frontend service)
       - key: FRONTEND_URL
