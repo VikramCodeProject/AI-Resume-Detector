@@ -6,13 +6,15 @@ Event-Driven Resume Verification Architecture
 from typing import Dict, Any, Optional, Callable, List
 from pydantic import BaseModel
 from enum import Enum
-from datetime import datetime
+from datetime import UTC, datetime
 from logging import getLogger
 import json
 import os
 from functools import lru_cache
 import asyncio
 from uuid import uuid4
+
+from utils.time_utils import utc_now
 
 logger = getLogger(__name__)
 
@@ -47,7 +49,7 @@ class Event(BaseModel):
         if 'event_id' not in kwargs:
             kwargs['event_id'] = str(uuid4())
         if 'timestamp' not in kwargs:
-            kwargs['timestamp'] = datetime.utcnow()
+            kwargs['timestamp'] = utc_now()
         if 'correlation_id' not in kwargs:
             kwargs['correlation_id'] = str(uuid4())
         super().__init__(**kwargs)
@@ -371,3 +373,4 @@ class BlockchainRecordWrittenEvent(Event):
 def get_event_bus() -> EventBus:
     """Get event bus singleton"""
     return EventBus()
+

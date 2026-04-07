@@ -1,9 +1,9 @@
 import os
 import logging
-from uuid import uuid4
-from typing import List, Optional
-from datetime import datetime
+from uuid import NAMESPACE_URL, uuid4, uuid5
+from typing import Any, Dict, List, Optional
 import re
+import json
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, Depends
 from pydantic import BaseModel
@@ -40,9 +40,23 @@ logger = logging.getLogger("UsMiniProject")
 from services import get_github_service, get_ocr_service
 from services.blockchain_service import get_blockchain_service
 from utils.api_response import success_response
+from utils.time_utils import utc_now
+
+try:
+    from sqlalchemy import delete
+    from database import async_session
+    from models import VerificationResult
+    HAS_SQLALCHEMY = True
+except Exception:
+    delete = None
+    async_session = None
+    VerificationResult = Any
+    HAS_SQLALCHEMY = False
 
 
 router = APIRouter(tags=["Enterprise Verification"])
+VERIFICATION_DB_ENABLED = HAS_SQLALCHEMY
+_verification_results_fallback: Dict[str, List[dict]] = {}
 
 
 class GitHubVerificationRequest(BaseModel):
@@ -69,6 +83,42 @@ SQLI_PATTERN = re.compile(r"('|\"|;|--|/\*|\*/|\bunion\b|\bdrop\b|\bselect\b)", 
 def validate_untrusted_input(field_name: str, value: Optional[str]) -> None:
     if value and SQLI_PATTERN.search(value):
         raise HTTPException(status_code=400, detail=f"Potentially unsafe input in {field_name}")
+
+
+def _verification_claim_id(resume_key: str, source: str) -> str:
+    return str(uuid5(NAMESPACE_URL, f"{resume_key}:{source}"))
+
+
+async def persist_verification_results(resume_key: str, entries: List[dict]) -> None:
+    global VERIFICATION_DB_ENABLED
+
+    _verification_results_fallback[resume_key] = entries
+
+    if not (HAS_SQLALCHEMY and VERIFICATION_DB_ENABLED and async_session is not None and delete is not None):
+        return
+
+    try:
+        async with async_session() as session:
+            for entry in entries:
+                source = str(entry.get("source", "unknown"))
+                claim_id = _verification_claim_id(resume_key, source)
+
+                await session.execute(delete(VerificationResult).where(VerificationResult.claim_id == claim_id))
+
+                db_row = VerificationResult(
+                    id=str(uuid4()),
+                    claim_id=claim_id,
+                    source=source,
+                    score=float(entry.get("score", 0.0)),
+                    evidence_json=json.dumps(entry.get("evidence", {}), default=str),
+                    verified_at=utc_now(),
+                )
+                session.add(db_row)
+
+            await session.commit()
+    except Exception as exc:
+        VERIFICATION_DB_ENABLED = False
+        logger.warning("Verification DB write failed, fallback-only mode enabled: %s", exc)
 
 
 @router.post("/verify/resume")
@@ -130,6 +180,16 @@ async def verify_github_endpoint(request: Request, payload: GitHubVerificationRe
         logger.warning(f"Celery unavailable for GitHub verification, using direct service: {str(e)}")
         github_service = get_github_service()
         result = await github_service.verify_profile(payload.username, payload.claimed_skills or [])
+        await persist_verification_results(
+            resume_key=f"github:{payload.username}",
+            entries=[
+                {
+                    "source": "github",
+                    "score": float(result.get("github_authenticity_score", 0.0)),
+                    "evidence": result,
+                }
+            ],
+        )
         return success_response(result)
 
 
@@ -172,6 +232,16 @@ async def verify_certificate_endpoint(
             resume_id=resume_id,
         )
         result["cert_id"] = cert_id
+        await persist_verification_results(
+            resume_key=resume_id or f"certificate:{cert_id}",
+            entries=[
+                {
+                    "source": "certificate",
+                    "score": float(result.get("authenticity_score", 0.0)),
+                    "evidence": result,
+                }
+            ],
+        )
         return success_response(result)
 
 
@@ -226,7 +296,7 @@ async def verify_full_endpoint(request: Request, payload: FullVerificationReques
         risk_level = "low" if final_score >= 80 else "medium" if final_score >= 60 else "high"
         classification = "VERIFIED" if final_score >= 70 else "DOUBTFUL" if final_score >= 50 else "FAKE"
 
-        hash_material = f"{payload.resume_id}:{payload.resume_text or ''}:{datetime.utcnow().date().isoformat()}"
+        hash_material = f"{payload.resume_id}:{payload.resume_text or ''}:{utc_now().date().isoformat()}"
         resume_hash = hashlib.sha256(hash_material.encode("utf-8")).hexdigest()
         blockchain_tx_hash = None
         blockchain_block = None
@@ -239,6 +309,40 @@ async def verify_full_endpoint(request: Request, payload: FullVerificationReques
             )
         except Exception as chain_exc:
             logger.warning("Blockchain write failed in direct mode: %s", chain_exc)
+
+        verification_entries = []
+        if github_result:
+            verification_entries.append(
+                {
+                    "source": "github",
+                    "score": float(github_result.get("github_authenticity_score", 0.0)),
+                    "evidence": github_result,
+                }
+            )
+
+        for cert_result in cert_results:
+            verification_entries.append(
+                {
+                    "source": "certificate",
+                    "score": float(cert_result.get("authenticity_score", 0.0)),
+                    "evidence": cert_result,
+                }
+            )
+
+        verification_entries.append(
+            {
+                "source": "aggregate",
+                "score": float(final_score),
+                "evidence": {
+                    "classification": classification,
+                    "risk_level": risk_level,
+                    "blockchain_tx_hash": blockchain_tx_hash,
+                    "block_number": blockchain_block,
+                },
+            }
+        )
+
+        await persist_verification_results(payload.resume_id, verification_entries)
 
         return success_response(
             {
@@ -276,3 +380,4 @@ async def verify_blockchain_hash_endpoint(
         return success_response(result)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Blockchain verification failed: {exc}")
+

@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 from unittest.mock import patch, AsyncMock, MagicMock
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -34,7 +35,7 @@ def _register_and_login(client: TestClient, email: str, password: str):
 
 def test_refresh_token_flow_returns_standard_success_contract():
     client = TestClient(app, base_url="http://127.0.0.1")
-    tokens = _register_and_login(client, "refresh-contract@example.com", "Password123!")
+    tokens = _register_and_login(client, f"refresh-{uuid4().hex}@example.com", "Password123!")
 
     response = client.post(
         "/api/auth/refresh",

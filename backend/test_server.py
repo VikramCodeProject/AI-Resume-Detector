@@ -8,7 +8,9 @@ from typing import Dict, Any
 import uuid
 import os
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
+
+from utils.time_utils import utc_now_iso
 
 app = FastAPI(title="Resume Verification API", version="1.0.0")
 
@@ -57,7 +59,7 @@ async def upload_resume(file: UploadFile = File(...)):
         "resume_id": resume_id,
         "filename": file.filename,
         "status": "processing",
-        "uploaded_at": datetime.utcnow().isoformat() + "Z",
+        "uploaded_at": utc_now_iso() + "Z",
         "trust_score": None,
         "claims": [],
         "predictions": [],
@@ -86,7 +88,7 @@ async def _simulate_processing(resume_id: str):
         "verified_count": 3,
         "doubtful_count": 0,
         "fake_count": 0,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": utc_now_iso() + "Z",
     }
     RESUMES[resume_id]["claims"] = [
         {"id": "c1", "claim_type": "skill", "claim_text": "Python", "confidence": 0.98},
@@ -111,3 +113,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="127.0.0.1", port=8000)
+

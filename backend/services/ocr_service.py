@@ -13,12 +13,14 @@ Enterprise Features:
 
 import logging
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+from datetime import UTC, datetime
 import re
 from pathlib import Path
 import hashlib
 import json
 from difflib import SequenceMatcher
+
+from utils.time_utils import utc_now_iso
 
 # Image processing
 from PIL import Image
@@ -178,7 +180,7 @@ class CertificateOCRService:
                     validation_results,
                     duplicate_check
                 ),
-                'verified_at': datetime.utcnow().isoformat()
+                'verified_at': utc_now_iso()
             }
             
             logger.info(f"Certificate verification complete: score={authenticity_score['total_score']:.2f}")
@@ -655,7 +657,7 @@ class CertificateOCRService:
             'authenticity_score': 0.0,
             'risk_level': 'Critical',
             'error': error_message,
-            'verified_at': datetime.utcnow().isoformat()
+            'verified_at': utc_now_iso()
         }
 
 
@@ -673,3 +675,4 @@ def get_ocr_service(
         _ocr_service = CertificateOCRService(database_client, use_easyocr)
     
     return _ocr_service
+

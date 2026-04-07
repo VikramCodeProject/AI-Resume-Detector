@@ -15,6 +15,7 @@ from security.auth import JWTManager, RBACManager, UserRole, TokenPayload, get_j
 from services.vector_search import ResumeVectorService, get_vector_service, PlagiarismResult
 from services.kafka_producer import EventBus, EventType, Event, get_event_bus
 from services.blockchain_service import get_blockchain_service
+from utils.time_utils import utc_now, utc_now_iso
 
 logger = getLogger(__name__)
 router = APIRouter(prefix="/api/ai", tags=["AI Features"])
@@ -161,7 +162,7 @@ async def detect_resume_similarity(
         HTTPException if resume not found or processing error
     """
     try:
-        start_time = datetime.utcnow()
+        start_time = utc_now()
         
         # Get vector service
         vector_service = get_vector_service()
@@ -177,7 +178,7 @@ async def detect_resume_similarity(
         )
         
         # Calculate processing time
-        processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        processing_time = (utc_now() - start_time).total_seconds() * 1000
         
         return ResumeSimilarityResponse(
             resume_id=request.resume_id,
@@ -233,7 +234,7 @@ async def verify_resume(
         VerificationResultResponse with results
     """
     try:
-        start_time = datetime.utcnow()
+        start_time = utc_now()
         
         # Publish event
         event_bus = get_event_bus()
@@ -258,7 +259,7 @@ async def verify_resume(
             verified=verified
         )
         
-        processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        processing_time = (utc_now() - start_time).total_seconds() * 1000
         
         return VerificationResultResponse(
             resume_id=resume_id,
@@ -337,7 +338,7 @@ async def health_check():
     """Check AI engine health"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now_iso(),
         "services": {
             "vector_search": "operational",
             "blockchain": "operational",
@@ -376,3 +377,4 @@ curl -X POST http://localhost:8000/api/ai/mint-nft-certificate \
     "skills": ["Python", "ML", "FastAPI"]
   }'
 """
+

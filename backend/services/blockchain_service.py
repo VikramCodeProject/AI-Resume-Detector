@@ -7,10 +7,12 @@ Enhanced with proper Web3 integration, gas optimization, and NFT support
 import asyncio
 import hashlib
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, Tuple, Optional
 from pydantic import BaseModel
 from functools import lru_cache
+
+from utils.time_utils import utc_now_iso
 
 from monitoring.metrics import blockchain_tx_time_seconds
 from utils.logger import get_logger
@@ -193,7 +195,7 @@ class BlockchainVerificationService:
         metadata = NFTMetadata(
             candidate_name=candidate_name,
             verification_score=verification_score,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=utc_now_iso(),
             resume_hash=resume_hash,
             job_title=job_title,
             company=company
@@ -264,3 +266,4 @@ class BlockchainVerificationService:
 def get_blockchain_service() -> BlockchainVerificationService:
     """Get blockchain service singleton"""
     return BlockchainVerificationService()
+

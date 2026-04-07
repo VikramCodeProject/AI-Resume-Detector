@@ -9,7 +9,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import os
 from pathlib import Path
 from typing import Optional, List
@@ -22,6 +22,7 @@ from uuid import uuid4
 import shutil
 import random
 import hashlib
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -87,7 +88,27 @@ except ImportError as e:
 from utils.exceptions import BlockchainError, OCRProcessingError, ResumeVerificationError
 from utils.logger import request_logging_middleware, setup_logging
 from utils.api_response import success_response, error_response
+from utils.time_utils import utc_now, utc_now_iso
 from security.http_security import attach_security_headers, issue_csrf_cookie, validate_csrf
+
+try:
+    from sqlalchemy import delete, select
+    from sqlalchemy.exc import IntegrityError
+    from database import async_session, init_db
+    from models import Claim, Resume, User
+    HAS_SQLALCHEMY = True
+except Exception:
+    delete = None
+    select = None
+    IntegrityError = Exception
+    async_session = None
+    Claim = Any
+    Resume = Any
+    User = Any
+    HAS_SQLALCHEMY = False
+
+    async def init_db():
+        return None
 
 try:
     from security.auth import UserRole, get_jwt_manager
@@ -118,6 +139,8 @@ if not HAS_JWT:
     logger.warning("PyJWT not installed - auth token generation/validation disabled")
 if not ENTERPRISE_ROUTER_ENABLED:
     logger.warning("Enterprise router disabled: %s", ENTERPRISE_ROUTER_IMPORT_ERROR)
+if not HAS_SQLALCHEMY:
+    logger.warning("SQLAlchemy unavailable - DB-backed auth persistence disabled")
 
 # ===================== CONFIGURATION =====================
 
@@ -311,11 +334,11 @@ class JWTService:
             )
         to_encode = data.copy()
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = utc_now() + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(hours=1)
+            expire = utc_now() + timedelta(hours=1)
         
-        to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+        to_encode.update({"exp": expire, "iat": utc_now()})
         encoded_jwt = jwt.encode(to_encode, self.secret, algorithm=self.algorithm)
         return encoded_jwt
     
@@ -418,7 +441,7 @@ class RateLimiter:
     
     def is_allowed(self, identifier: str, max_requests: int = 10, window_minutes: int = 1) -> bool:
         """Check if request is allowed"""
-        now = datetime.utcnow()
+        now = utc_now()
         key = identifier
         
         if key not in self.requests:
@@ -444,7 +467,7 @@ class AccountLockout:
     
     def record_failure(self, email: str, threshold: int = 5, duration_minutes: int = 15):
         """Record failed login attempt"""
-        now = datetime.utcnow()
+        now = utc_now()
         
         if email not in self.failed_attempts:
             self.failed_attempts[email] = []
@@ -584,7 +607,9 @@ def calculate_dynamic_trust_score(filename: str, resume_id: str) -> dict:
 def get_processing_state(resume: dict) -> tuple[int, str]:
     """Return realistic processing progress and stage text."""
     started_at = datetime.fromisoformat(resume['uploaded_at'])
-    elapsed_seconds = max(0.0, (datetime.utcnow() - started_at).total_seconds())
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
+    elapsed_seconds = max(0.0, (utc_now() - started_at).total_seconds())
     duration_seconds = float(resume.get('processing_duration_seconds', 8.0))
     progress = int(min(100, round((elapsed_seconds / duration_seconds) * 100)))
 
@@ -663,6 +688,7 @@ mock_predictions = {}
 mock_users_store_file = repo_root / "backend" / "data" / "mock_users.json"
 mock_score_history = {}
 mock_score_history_store_file = repo_root / "backend" / "data" / "mock_score_history.json"
+AUTH_DB_ENABLED = False
 
 
 def load_mock_users() -> None:
@@ -750,6 +776,321 @@ def register_score_history(resume: dict) -> None:
     mock_score_history[key] = used
     save_mock_score_history()
 
+
+def _user_to_record(user: Any) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "password_hash": user.password_hash,
+        "full_name": user.full_name,
+        "role": user.role,
+        "gdpr_consent": user.gdpr_consent,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+async def get_user_record_by_email(email: str) -> Optional[dict]:
+    global AUTH_DB_ENABLED
+
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None and select is not None:
+        try:
+            async with async_session() as session:
+                stmt = select(User).where(User.email == email)
+                result = await session.execute(stmt)
+                user = result.scalar_one_or_none()
+                if user is not None:
+                    return _user_to_record(user)
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Auth DB disabled after read failure: %s", exc)
+
+    return mock_users.get(email)
+
+
+async def create_user_record(
+    email: str,
+    password_hash: str,
+    full_name: str,
+    role: str,
+    gdpr_consent: bool,
+) -> Optional[dict]:
+    global AUTH_DB_ENABLED
+
+    user_id = str(uuid4())
+    created_at_iso = utc_now_iso()
+
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None:
+        try:
+            async with async_session() as session:
+                db_user = User(
+                    id=user_id,
+                    email=email,
+                    password_hash=password_hash,
+                    full_name=full_name,
+                    role=role,
+                    gdpr_consent=gdpr_consent,
+                    created_at=utc_now(),
+                )
+                session.add(db_user)
+                await session.commit()
+                await session.refresh(db_user)
+                return _user_to_record(db_user)
+        except IntegrityError:
+            return None
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Auth DB disabled after write failure: %s", exc)
+
+    if email in mock_users:
+        return None
+
+    mock_users[email] = {
+        "id": user_id,
+        "email": email,
+        "password_hash": password_hash,
+        "full_name": full_name,
+        "role": role,
+        "gdpr_consent": gdpr_consent,
+        "created_at": created_at_iso,
+        "failed_login_attempts": 0,
+        "is_locked": False,
+    }
+    save_mock_users()
+    return mock_users[email]
+
+
+def _resume_to_record(resume: Any) -> dict:
+    trust_score = None
+    if resume.trust_overall_score is not None:
+        trust_score = {
+            "overall_score": float(resume.trust_overall_score),
+            "verified_count": int(resume.trust_verified_count or 0),
+            "doubtful_count": int(resume.trust_doubtful_count or 0),
+            "fake_count": int(resume.trust_fake_count or 0),
+            "generated_at": resume.trust_generated_at.isoformat() if resume.trust_generated_at else utc_now_iso(),
+        }
+
+    return {
+        "id": resume.id,
+        "user_id": resume.user_id,
+        "filename": resume.filename,
+        "file_hash": resume.file_hash,
+        "file_path": resume.file_path,
+        "status": resume.status,
+        "uploaded_at": resume.uploaded_at.isoformat() if resume.uploaded_at else utc_now_iso(),
+        "processing_duration_seconds": float(resume.processing_duration_seconds or 10.0),
+        "trust_score": trust_score,
+        "claims": [],
+    }
+
+
+def _claim_to_record(claim: Any) -> dict:
+    return {
+        "id": claim.id,
+        "claim_type": claim.claim_type,
+        "claim_text": claim.claim_text,
+        "confidence": float(claim.confidence or 0.0),
+        "extracted_at": claim.extracted_at.isoformat() if claim.extracted_at else utc_now_iso(),
+    }
+
+
+async def create_resume_record(resume_payload: dict) -> dict:
+    global AUTH_DB_ENABLED
+
+    resume_id = resume_payload["id"]
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None:
+        try:
+            async with async_session() as session:
+                db_resume = Resume(
+                    id=resume_payload["id"],
+                    user_id=resume_payload["user_id"],
+                    filename=resume_payload["filename"],
+                    file_hash=resume_payload["file_hash"],
+                    file_path=resume_payload["file_path"],
+                    status=resume_payload["status"],
+                    uploaded_at=utc_now(),
+                    processing_duration_seconds=resume_payload["processing_duration_seconds"],
+                )
+                session.add(db_resume)
+                await session.commit()
+                await session.refresh(db_resume)
+                record = _resume_to_record(db_resume)
+                mock_resumes[resume_id] = record
+                return record
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Resume DB write failed, using in-memory fallback: %s", exc)
+
+    mock_resumes[resume_id] = resume_payload
+    return resume_payload
+
+
+async def get_resume_record_by_id(resume_id: str, user_id: Optional[str] = None) -> Optional[dict]:
+    global AUTH_DB_ENABLED
+
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None and select is not None:
+        try:
+            async with async_session() as session:
+                stmt = select(Resume).where(Resume.id == resume_id)
+                if user_id:
+                    stmt = stmt.where(Resume.user_id == user_id)
+                result = await session.execute(stmt)
+                db_resume = result.scalar_one_or_none()
+                if db_resume is None:
+                    return None
+                record = _resume_to_record(db_resume)
+                mock_resumes[resume_id] = record
+                return record
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Resume DB read failed, using in-memory fallback: %s", exc)
+
+    resume = mock_resumes.get(resume_id)
+    if resume and user_id and resume.get("user_id") != user_id:
+        return None
+    return resume
+
+
+async def list_resume_records_for_user(user_id: str) -> List[dict]:
+    global AUTH_DB_ENABLED
+
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None and select is not None:
+        try:
+            async with async_session() as session:
+                stmt = select(Resume).where(Resume.user_id == user_id)
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+                records = [_resume_to_record(row) for row in rows]
+                for record in records:
+                    mock_resumes[record["id"]] = record
+                return records
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Resume DB list failed, using in-memory fallback: %s", exc)
+
+    return [r for r in mock_resumes.values() if r.get("user_id") == user_id]
+
+
+async def list_all_resume_records() -> List[dict]:
+    global AUTH_DB_ENABLED
+
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None and select is not None:
+        try:
+            async with async_session() as session:
+                result = await session.execute(select(Resume))
+                rows = result.scalars().all()
+                records = [_resume_to_record(row) for row in rows]
+                for record in records:
+                    mock_resumes[record["id"]] = record
+                return records
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Resume DB global list failed, using in-memory fallback: %s", exc)
+
+    return list(mock_resumes.values())
+
+
+async def persist_resume_record_updates(resume: dict) -> None:
+    global AUTH_DB_ENABLED
+
+    mock_resumes[resume["id"]] = resume
+
+    if not (HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None and select is not None):
+        return
+
+    try:
+        async with async_session() as session:
+            stmt = select(Resume).where(Resume.id == resume["id"])
+            result = await session.execute(stmt)
+            db_resume = result.scalar_one_or_none()
+            if db_resume is None:
+                return
+
+            db_resume.status = resume.get("status", db_resume.status)
+            db_resume.processing_duration_seconds = float(resume.get("processing_duration_seconds", db_resume.processing_duration_seconds or 10.0))
+
+            trust_score = resume.get("trust_score")
+            if trust_score:
+                db_resume.trust_overall_score = float(trust_score.get("overall_score", 0.0))
+                db_resume.trust_verified_count = int(trust_score.get("verified_count", 0))
+                db_resume.trust_doubtful_count = int(trust_score.get("doubtful_count", 0))
+                db_resume.trust_fake_count = int(trust_score.get("fake_count", 0))
+                generated_at = trust_score.get("generated_at")
+                if isinstance(generated_at, str):
+                    try:
+                        db_resume.trust_generated_at = datetime.fromisoformat(generated_at)
+                    except Exception:
+                        db_resume.trust_generated_at = utc_now()
+                else:
+                    db_resume.trust_generated_at = utc_now()
+
+            await session.commit()
+    except Exception as exc:
+        AUTH_DB_ENABLED = False
+        logger.warning("Resume DB update failed, using in-memory fallback: %s", exc)
+
+
+async def get_claim_records_for_resume(resume_id: str) -> List[dict]:
+    global AUTH_DB_ENABLED
+
+    if HAS_SQLALCHEMY and AUTH_DB_ENABLED and async_session is not None and select is not None:
+        try:
+            async with async_session() as session:
+                stmt = select(Claim).where(Claim.resume_id == resume_id)
+                result = await session.execute(stmt)
+                rows = result.scalars().all()
+                claim_records = [_claim_to_record(row) for row in rows]
+                mock_claims[resume_id] = claim_records
+                return claim_records
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Claim DB read failed, using in-memory fallback: %s", exc)
+
+    return mock_claims.get(resume_id, [])
+
+
+async def persist_claim_records_for_resume(resume_id: str, claims: List[dict]) -> None:
+    global AUTH_DB_ENABLED
+
+    mock_claims[resume_id] = claims
+
+    if not (
+        HAS_SQLALCHEMY
+        and AUTH_DB_ENABLED
+        and async_session is not None
+        and delete is not None
+        and select is not None
+    ):
+        return
+
+    try:
+        async with async_session() as session:
+            await session.execute(delete(Claim).where(Claim.resume_id == resume_id))
+
+            for claim in claims:
+                extracted_at_value = claim.get("extracted_at")
+                extracted_at = utc_now()
+                if isinstance(extracted_at_value, str):
+                    try:
+                        extracted_at = datetime.fromisoformat(extracted_at_value)
+                    except Exception:
+                        extracted_at = utc_now()
+
+                db_claim = Claim(
+                    id=claim.get("id") or str(uuid4()),
+                    resume_id=resume_id,
+                    claim_type=claim.get("claim_type", "experience"),
+                    claim_text=claim.get("claim_text", ""),
+                    confidence=float(claim.get("confidence", 0.0)),
+                    extracted_at=extracted_at,
+                )
+                session.add(db_claim)
+
+            await session.commit()
+    except Exception as exc:
+        AUTH_DB_ENABLED = False
+        logger.warning("Claim DB write failed, using in-memory fallback: %s", exc)
+
 # Security utilities initialization
 rate_limiter = RateLimiter()
 account_lockout = AccountLockout()
@@ -760,11 +1101,22 @@ file_validator = FileValidator()
 
 async def startup_event():
     """Application startup"""
+    global AUTH_DB_ENABLED
     logger.info("Application starting...")
     os.makedirs("uploads", exist_ok=True)
     logger.info("Uploads directory ready")
     load_mock_users()
     load_mock_score_history()
+    if HAS_SQLALCHEMY:
+        try:
+            await init_db()
+            AUTH_DB_ENABLED = True
+            logger.info("Auth database is enabled")
+        except Exception as exc:
+            AUTH_DB_ENABLED = False
+            logger.warning("Auth database unavailable; using local user store: %s", exc)
+    else:
+        AUTH_DB_ENABLED = False
 
 async def shutdown_event():
     """Application shutdown"""
@@ -875,7 +1227,7 @@ async def health_check():
     return success_response(
         {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_iso(),
             "environment": get_settings().ENVIRONMENT,
             "version": "1.0.0",
         }
@@ -922,7 +1274,7 @@ async def config_check():
                 "database_url_configured": bool(settings.DATABASE_URL),
                 "redis_url_configured": bool(settings.REDIS_URL),
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_iso(),
         }
     )
 
@@ -947,7 +1299,8 @@ async def register(request: UserRegisterRequest):
             detail={"message": "Password does not meet security requirements", "errors": errors}
         )
     
-    if request.email in mock_users:
+    existing_user = await get_user_record_by_email(request.email)
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already exists"
@@ -966,26 +1319,25 @@ async def register(request: UserRegisterRequest):
 
     normalized_role = "candidate" if role_value == "user" else role_value
 
-    user_id = str(uuid4())
-    mock_users[request.email] = {
-        'id': user_id,
-        'email': request.email,
-        'password_hash': PasswordHasher.hash_password(request.password),
-        'full_name': request.full_name,
-        'role': normalized_role,
-        'gdpr_consent': request.gdpr_consent,
-        'created_at': datetime.utcnow().isoformat(),
-        'failed_login_attempts': 0,
-        'is_locked': False
-    }
-    save_mock_users()
+    created_user = await create_user_record(
+        email=request.email,
+        password_hash=PasswordHasher.hash_password(request.password),
+        full_name=request.full_name,
+        role=normalized_role,
+        gdpr_consent=request.gdpr_consent,
+    )
+    if created_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User already exists",
+        )
     
     logger.info(f"User registered: {request.email}")
     
     return success_response(
         {
             "message": "User registered successfully",
-            "user_id": user_id,
+            "user_id": created_user["id"],
             "email": request.email,
             "role": normalized_role,
         },
@@ -1013,7 +1365,7 @@ async def login(request: UserLoginRequest):
         )
     
     # Authenticate user
-    user = mock_users.get(request.email)
+    user = await get_user_record_by_email(request.email)
     if not user:
         logger.warning(f"Login blocked for non-existent account: {request.email}")
         raise HTTPException(
@@ -1145,19 +1497,19 @@ async def upload_resume(
         
         logger.info(f"Resume saved: {file_path}")
         
-        # Store in mock database
-        mock_resumes[resume_id] = {
+        resume_record = {
             'id': resume_id,
             'user_id': current_user.get('user_id'),
             'filename': file.filename,
             'file_hash': hashlib.sha256(contents).hexdigest(),
             'file_path': file_path,
             'status': 'processing',
-            'uploaded_at': datetime.utcnow().isoformat(),
+            'uploaded_at': utc_now_iso(),
             'processing_duration_seconds': max(5.0, min(18.0, round(6.0 + (len(contents) / (1024 * 1024)) * 2.5 + random.uniform(0.5, 2.5), 1))),
             'trust_score': None,
             'claims': []
         }
+        await create_resume_record(resume_record)
         
         # In production: submit to Celery task queue
         # from tasks import process_resume
@@ -1188,13 +1540,13 @@ async def get_resume_details(
     """Get resume details with claims and verifications"""
     logger.info(f"Fetching resume details: {resume_id}")
     
-    if resume_id not in mock_resumes:
+    user_id = current_user.get('user_id')
+    resume = await get_resume_record_by_id(resume_id, user_id=user_id)
+    if not resume:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Resume {resume_id} not found"
         )
-    
-    resume = mock_resumes[resume_id]
 
     processing_progress = None
     processing_stage = None
@@ -1212,9 +1564,16 @@ async def get_resume_details(
             'verified_count': trust_score['verified_count'],
             'doubtful_count': trust_score['doubtful_count'],
             'fake_count': trust_score['fake_count'],
-            'generated_at': datetime.utcnow().isoformat()
+            'generated_at': utc_now_iso()
         }
         register_score_history(resume)
+
+    claims = await get_claim_records_for_resume(resume_id)
+    if claims:
+        resume['claims'] = claims
+
+    await persist_claim_records_for_resume(resume_id, resume.get('claims', []))
+    await persist_resume_record_updates(resume)
     
     return ResumeDetailResponse(
         resume_id=resume['id'],
@@ -1235,13 +1594,13 @@ async def get_trust_score(
     """Get trust score for resume"""
     logger.info(f"Fetching trust score: {resume_id}")
     
-    if resume_id not in mock_resumes:
+    user_id = current_user.get('user_id')
+    resume = await get_resume_record_by_id(resume_id, user_id=user_id)
+    if not resume:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Resume {resume_id} not found"
         )
-    
-    resume = mock_resumes[resume_id]
     
     # If not yet calculated, generate dynamic score
     if not resume.get('trust_score'):
@@ -1252,9 +1611,12 @@ async def get_trust_score(
             'verified_count': trust_score['verified_count'],
             'doubtful_count': trust_score['doubtful_count'],
             'fake_count': trust_score['fake_count'],
-            'generated_at': datetime.utcnow().isoformat()
+            'generated_at': utc_now_iso()
         }
         register_score_history(resume)
+
+    await persist_claim_records_for_resume(resume_id, resume.get('claims', []))
+    await persist_resume_record_updates(resume)
     
     trust_score_data = resume['trust_score']
     return TrustScoreResponse(
@@ -1271,10 +1633,7 @@ async def list_resumes(current_user: dict = Depends(verify_token)):
     logger.info(f"Listing resumes for user: {current_user.get('email')}")
     
     user_id = current_user.get('user_id')
-    user_resumes = [
-        r for r in mock_resumes.values()
-        if r.get('user_id') == user_id
-    ]
+    user_resumes = await list_resume_records_for_user(user_id)
     
     return success_response({'resumes': user_resumes, 'total': len(user_resumes)})
 
@@ -1289,9 +1648,11 @@ async def get_dashboard_stats(current_user: dict = Depends(verify_token)):
     """Get system statistics for dashboard with dynamic calculations"""
     logger.info("Fetching dashboard statistics")
     
+    all_resumes = await list_all_resume_records()
+
     # Calculate dynamic stats from stored resumes
-    total_resumes = len(mock_resumes)
-    completed_resumes = [r for r in mock_resumes.values() if r.get('status') == 'completed']
+    total_resumes = len(all_resumes)
+    completed_resumes = [r for r in all_resumes if r.get('status') == 'completed']
     total_verified = len(completed_resumes)
     
     # Calculate average trust score from completed resumes
@@ -1307,7 +1668,7 @@ async def get_dashboard_stats(current_user: dict = Depends(verify_token)):
     average_trust = round(sum(trust_scores) / len(trust_scores), 1) if trust_scores else 0.0
     
     # Add some realistic variation to fake detection count
-    base_fake = 200 + len(mock_resumes) * 5
+    base_fake = 200 + len(all_resumes) * 5
     
     return success_response(
         {
@@ -1315,7 +1676,7 @@ async def get_dashboard_stats(current_user: dict = Depends(verify_token)):
             "total_verified": total_verified,
             "average_trust_score": average_trust,
             "fake_resumes_detected": base_fake + fake_count,
-            "processing_queue_length": max(0, len([r for r in mock_resumes.values() if r.get('status') == 'processing'])),
+            "processing_queue_length": max(0, len([r for r in all_resumes if r.get('status') == 'processing'])),
             "average_processing_time_seconds": 30 + random.randint(-10, 10),
         }
     )
@@ -1362,3 +1723,4 @@ if __name__ == "__main__":
         port=8000,
         log_level="info"
     )
+

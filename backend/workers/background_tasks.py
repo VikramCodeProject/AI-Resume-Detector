@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 from celery import Celery
@@ -11,6 +11,7 @@ from monitoring.metrics import ai_inference_time_seconds
 from services import get_deepfake_detector, get_github_service, get_llm_service, get_ocr_service
 from services.blockchain_service import get_blockchain_service
 from utils.logger import get_logger
+from utils.time_utils import utc_now_iso
 
 
 logger = get_logger(__name__)
@@ -60,7 +61,7 @@ def verify_resume_ai(self, resume_id: str, file_path: str) -> Dict[str, Any]:
                 "status": "completed",
                 "claims_count": len(claims),
                 "trust_score": score,
-                "completed_at": datetime.utcnow().isoformat(),
+                "completed_at": utc_now_iso(),
             }
         except Exception:
             logger.exception("Resume AI analysis failed", extra={"resume_id": resume_id})
@@ -158,7 +159,7 @@ def verify_full(
         "deepfake_analysis": deepfake_result,
         "llm_explanation": llm_result,
         "blockchain": blockchain_result,
-        "verified_at": datetime.utcnow().isoformat(),
+        "verified_at": utc_now_iso(),
         "status": "completed",
     }
     logger.info("Blockchain transaction", extra={"resume_id": resume_id, "status": blockchain_result.get("status")})
@@ -181,3 +182,4 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
         payload["meta"] = task_result.info
 
     return payload
+

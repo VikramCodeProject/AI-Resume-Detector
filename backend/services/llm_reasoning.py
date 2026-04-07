@@ -12,9 +12,11 @@ Enterprise Features:
 
 import logging
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 import os
 import json
+
+from utils.time_utils import utc_now_iso
 
 # OpenAI (primary)
 try:
@@ -164,7 +166,7 @@ class LLMReasoningService:
                 'red_flags': self._extract_red_flags(context),
                 'green_flags': self._extract_green_flags(context),
                 'recommendation': self._generate_recommendation(final_score, risk_level),
-                'generated_at': datetime.utcnow().isoformat(),
+                'generated_at': utc_now_iso(),
                 'reasoning_engine': 'OpenAI' if self.use_openai else 'HuggingFace' if HUGGINGFACE_AVAILABLE else 'Template'
             }
             
@@ -528,7 +530,7 @@ class LLMReasoningService:
             'red_flags': ["Analysis incomplete due to error"],
             'green_flags': [],
             'recommendation': "Manual review required due to analysis error",
-            'generated_at': datetime.utcnow().isoformat()
+            'generated_at': utc_now_iso()
         }
 
 
@@ -547,3 +549,4 @@ def get_llm_service(
         _llm_service = LLMReasoningService(openai_api_key, use_openai, model_name)
     
     return _llm_service
+

@@ -648,12 +648,29 @@
       async function parseApiError(res) {
         try {
           const data = await res.json();
-          if (data?.error && data?.message) return data.message;
-          if (data?.detail) {
+          if (typeof data === 'string') {
+            return data;
+          }
+          if (typeof data === 'boolean') {
+            return data ? 'Request failed' : 'Request failed';
+          }
+          if (data?.error && data?.message) {
+            return String(data.message);
+          }
+          if (data?.detail !== undefined && data?.detail !== null) {
             if (Array.isArray(data.detail)) {
               return data.detail.map(d => d.msg).filter(Boolean).join(', ') || 'Request failed';
             }
-            return data.detail;
+            if (typeof data.detail === 'string') {
+              return data.detail;
+            }
+            if (typeof data.detail === 'boolean') {
+              return data.detail ? 'Invalid credentials or account not found' : 'Request failed';
+            }
+            return JSON.stringify(data.detail);
+          }
+          if (data?.message) {
+            return String(data.message);
           }
           return 'Request failed';
         } catch {
@@ -772,7 +789,8 @@
           }
 
           const data = await res.json();
-          const online = data?.status === 'healthy';
+          const statusValue = data?.status || data?.data?.status;
+          const online = statusValue === 'healthy';
           const latencyMs = performance.now() - startedAt;
 
           if (online) {

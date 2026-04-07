@@ -12,12 +12,14 @@ Enterprise Features:
 import aiohttp
 import logging
 from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from collections import Counter
 import asyncio
 import hashlib
 import json
 import os
+
+from utils.time_utils import utc_now, utc_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +124,7 @@ class GitHubVerificationService:
                 'github_authenticity_score': score_breakdown['total_score'],
                 'risk_level': self._determine_risk_level(score_breakdown['total_score']),
                 'recommendations': self._generate_recommendations(metrics, score_breakdown),
-                'verified_at': datetime.utcnow().isoformat(),
+                'verified_at': utc_now_iso(),
                 'cache_ttl': self.CACHE_TTL_SECONDS
             }
             
@@ -215,7 +217,7 @@ class GitHubVerificationService:
         # Activity metrics
         account_age_days = self._calculate_account_age(user_data.get('created_at', ''))
         last_activity = self._get_last_activity_date(repos_data, events_data)
-        days_since_activity = (datetime.utcnow() - last_activity).days if last_activity else None
+        days_since_activity = (utc_now() - last_activity).days if last_activity else None
         
         # Contribution frequency (commits from events)
         commit_count = sum(
@@ -500,7 +502,11 @@ class GitHubVerificationService:
         """Calculate account age in days"""
         try:
             created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-            return (datetime.utcnow() - created_date.replace(tzinfo=None)).days
+            if created_date.tzinfo is None:
+                created_date = created_date.replace(tzinfo=UTC)
+            else:
+                created_date = created_date.astimezone(UTC)
+            return (utc_now() - created_date).days
         except:
             return 0
     
@@ -517,7 +523,11 @@ class GitHubVerificationService:
             if repo.get('updated_at'):
                 try:
                     date = datetime.fromisoformat(repo['updated_at'].replace('Z', '+00:00'))
-                    dates.append(date.replace(tzinfo=None))
+                    if date.tzinfo is None:
+                        date = date.replace(tzinfo=UTC)
+                    else:
+                        date = date.astimezone(UTC)
+                    dates.append(date)
                 except:
                     pass
         
@@ -526,7 +536,11 @@ class GitHubVerificationService:
             if event.get('created_at'):
                 try:
                     date = datetime.fromisoformat(event['created_at'].replace('Z', '+00:00'))
-                    dates.append(date.replace(tzinfo=None))
+                    if date.tzinfo is None:
+                        date = date.replace(tzinfo=UTC)
+                    else:
+                        date = date.astimezone(UTC)
+                    dates.append(date)
                 except:
                     pass
         
@@ -575,7 +589,7 @@ class GitHubVerificationService:
             'error': error_message,
             'github_authenticity_score': 0.0,
             'risk_level': 'Critical',
-            'verified_at': datetime.utcnow().isoformat()
+            'verified_at': utc_now_iso()
         }
 
 
@@ -593,3 +607,4 @@ def get_github_service(
         _github_service = GitHubVerificationService(api_token, redis_client)
     
     return _github_service
+

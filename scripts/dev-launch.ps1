@@ -175,7 +175,18 @@ function Wait-ForBackendHealth {
 
         try {
             $response = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 2
-            if ($response.status -eq "healthy") {
+            $statusValue = $null
+            if ($response.PSObject.Properties.Name -contains "status") {
+                $statusValue = $response.status
+            } elseif (
+                ($response.PSObject.Properties.Name -contains "data") -and
+                $response.data -and
+                ($response.data.PSObject.Properties.Name -contains "status")
+            ) {
+                $statusValue = $response.data.status
+            }
+
+            if ($statusValue -eq "healthy") {
                 return $true
             }
         } catch {

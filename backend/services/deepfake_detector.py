@@ -16,7 +16,9 @@ from typing import Dict, List, Optional, Tuple
 from collections import Counter
 import re
 import math
-from datetime import datetime
+from datetime import UTC, datetime
+
+from utils.time_utils import utc_now_iso
 
 # NLP and language modeling
 import numpy as np
@@ -183,7 +185,7 @@ class DeepfakeDetector:
                     generic_phrase_results
                 ),
                 'recommendations': self._generate_recommendations(ai_probability, is_deepfake),
-                'analyzed_at': datetime.utcnow().isoformat()
+                'analyzed_at': utc_now_iso()
             }
             
             logger.info(f"Deepfake analysis complete: AI probability={ai_probability:.2%}, flag={is_deepfake}")
@@ -523,7 +525,7 @@ class DeepfakeDetector:
             'deepfake_flag': False,
             'risk_level': 'Unknown',
             'error': error_message,
-            'analyzed_at': datetime.utcnow().isoformat()
+            'analyzed_at': utc_now_iso()
         }
 
 
@@ -538,3 +540,4 @@ def get_deepfake_detector(use_perplexity: bool = True) -> DeepfakeDetector:
         _deepfake_detector = DeepfakeDetector(use_perplexity)
     
     return _deepfake_detector
+
